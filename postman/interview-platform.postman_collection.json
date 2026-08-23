@@ -1,0 +1,426 @@
+{
+  "info": {
+    "_postman_id": "d2214041-69ee-42ab-8b2a-d08000f1c1aa",
+    "name": "Interview Platform — Phase 1 / S3 (Auth Spine)",
+    "description": "Proves the auth spine of Phase 1: public health path, Keycloak password-grant login (token stored in a variable), and the protected endpoint through the gateway returning 401 without a token and 200 with it, with issuer and organization_id claim assertions.\n\nFILL ONLY THESE (secrets, Collection -> Variables tab):\n- recruiterAUsername / recruiterAPassword — org A recruiter. Username in the export is 'recruiter1'.\n- recruiterBUsername / recruiterBPassword — org B recruiter. Username in the export is 'recruiter2'.\n\nEverything else is concrete, read from keycloak/realm-export.json and MeController.java:\n- orgAId = 11111111-1111-1111-1111-111111111111\n- orgBId = 22222222-2222-2222-2222-222222222222\n- /api/me returns keys 'subject' and 'organizationId'\n- interview-web has directAccessGrantsEnabled=true (password grant works)\n- issuer is http://localhost:8180/realms/interview-platform in all three places\n\nDo NOT paste an access token by hand: the Auth requests set {{accessToken}} / {{accessTokenB}} in their test scripts.\n\nRun order (top to bottom, one click): Health -> Auth (sets tokens) -> Protected endpoint.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "46902495",
+    "_collection_link": "https://go.postman.co/collection/46902495-d2214041-69ee-42ab-8b2a-d08000f1c1aa?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "1 — Health (public path)",
+      "item": [
+        {
+          "name": "GET /actuator/health (public)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var json;",
+                  "pm.test('Response is JSON', function () {",
+                  "    json = pm.response.json();",
+                  "    pm.expect(json).to.be.an('object');",
+                  "});",
+                  "",
+                  "pm.test(\"body.status equals 'UP'\", function () {",
+                  "    pm.expect(json.status).to.eql('UP');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/actuator/health",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": "The single public path. Must succeed with NO Authorization header."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2 — Auth (Keycloak)",
+      "item": [
+        {
+          "name": "POST token — recruiter A (org A)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "",
+                  "pm.test('access_token is present', function () {",
+                  "    pm.expect(json.access_token, 'no access_token in response').to.be.a('string').and.to.have.length.above(0);",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('accessToken', json.access_token);",
+                  "",
+                  "function decodeJwtPayload(token) {",
+                  "    var seg = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "    while (seg.length % 4) { seg += '='; }",
+                  "    var txt = CryptoJS.enc.Utf8.stringify(CryptoJS.enc.Base64.parse(seg));",
+                  "    return JSON.parse(txt);",
+                  "}",
+                  "",
+                  "var payload = decodeJwtPayload(json.access_token);",
+                  "var expectedIss = pm.collectionVariables.get('keycloakUrl') + '/realms/' + pm.collectionVariables.get('realm');",
+                  "",
+                  "pm.test('iss equals ' + expectedIss, function () {",
+                  "    pm.expect(payload.iss).to.eql(expectedIss);",
+                  "});",
+                  "",
+                  "pm.test('organization_id claim is present', function () {",
+                  "    pm.expect(payload.organization_id, 'organization_id claim missing — check the client protocol mapper').to.exist;",
+                  "});",
+                  "",
+                  "pm.test('organization_id equals org A UUID', function () {",
+                  "    pm.expect(payload.organization_id).to.eql(pm.collectionVariables.get('orgAId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "password",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{clientId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "{{recruiterAUsername}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "{{recruiterAPassword}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/token",
+              "host": [
+                "{{keycloakUrl}}"
+              ],
+              "path": [
+                "realms",
+                "{{realm}}",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            },
+            "description": "Password grant on the public client interview-web. Stores {{accessToken}} and asserts issuer + org A tenant claim."
+          },
+          "response": []
+        },
+        {
+          "name": "POST token — recruiter B (org B)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "",
+                  "pm.test('access_token is present', function () {",
+                  "    pm.expect(json.access_token, 'no access_token in response').to.be.a('string').and.to.have.length.above(0);",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('accessTokenB', json.access_token);",
+                  "",
+                  "function decodeJwtPayload(token) {",
+                  "    var seg = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "    while (seg.length % 4) { seg += '='; }",
+                  "    var txt = CryptoJS.enc.Utf8.stringify(CryptoJS.enc.Base64.parse(seg));",
+                  "    return JSON.parse(txt);",
+                  "}",
+                  "",
+                  "var payload = decodeJwtPayload(json.access_token);",
+                  "",
+                  "pm.test('organization_id equals org B UUID', function () {",
+                  "    pm.expect(payload.organization_id).to.eql(pm.collectionVariables.get('orgBId'));",
+                  "});",
+                  "",
+                  "pm.test('org A and org B carry different organization_id', function () {",
+                  "    pm.expect(pm.collectionVariables.get('orgAId')).to.not.eql(pm.collectionVariables.get('orgBId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "password",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{clientId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "{{recruiterBUsername}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "{{recruiterBPassword}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/token",
+              "host": [
+                "{{keycloakUrl}}"
+              ],
+              "path": [
+                "realms",
+                "{{realm}}",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            },
+            "description": "Proves the two tenants are distinct at the token layer. Stores {{accessTokenB}}. Does NOT call any domain endpoint — none exists yet."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3 — Protected endpoint through the gateway",
+      "item": [
+        {
+          "name": "GET /api/me WITHOUT token (expect 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/me",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "me"
+              ]
+            },
+            "description": "Mandatory failure case for this slice: no Authorization header must be rejected by the gateway. Independent of {{accessToken}} — runs cleanly regardless."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/me WITH token (expect 200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var json;",
+                  "pm.test('Response is JSON', function () {",
+                  "    json = pm.response.json();",
+                  "    pm.expect(json).to.be.an('object');",
+                  "});",
+                  "",
+                  "pm.test('body.subject is present', function () {",
+                  "    pm.expect(json.subject).to.be.a('string').and.to.have.length.above(0);",
+                  "});",
+                  "",
+                  "pm.test('body.organizationId equals org A UUID', function () {",
+                  "    pm.expect(json.organizationId).to.eql(pm.collectionVariables.get('orgAId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/me",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "me"
+              ]
+            },
+            "description": "Proves the JWT survives the gateway and reaches interview-service, and the tenant claim is exposed as organizationId matching recruiter A's token."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "gatewayUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "keycloakUrl",
+      "value": "http://localhost:8180"
+    },
+    {
+      "key": "realm",
+      "value": "interview-platform"
+    },
+    {
+      "key": "clientId",
+      "value": "interview-web"
+    },
+    {
+      "key": "recruiterAUsername",
+      "value": "recruiter1"
+    },
+    {
+      "key": "recruiterAPassword",
+      "value": ""
+    },
+    {
+      "key": "recruiterBUsername",
+      "value": "recruiter2"
+    },
+    {
+      "key": "recruiterBPassword",
+      "value": ""
+    },
+    {
+      "key": "orgAId",
+      "value": "11111111-1111-1111-1111-111111111111"
+    },
+    {
+      "key": "orgBId",
+      "value": "22222222-2222-2222-2222-222222222222"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "accessTokenB",
+      "value": ""
+    }
+  ]
+}
