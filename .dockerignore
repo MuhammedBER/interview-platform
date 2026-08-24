@@ -1,0 +1,13 @@
+# build outputs
+**/target/
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+# vcs & secrets
+.git/
+.gitignore
+**/.env
+# docs (not needed in image builds)
+docs/

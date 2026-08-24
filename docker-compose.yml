@@ -16,6 +16,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
   mailhog:
     image: mailhog/mailhog
     container_name: interview-platform-mailhog
@@ -27,10 +28,10 @@ services:
     image: quay.io/keycloak/keycloak:24.0.5
     container_name: interview-platform-keycloak
     command:
-        - start-dev
-        - --import-realm
+      - start-dev
+      - --import-realm
     ports:
-        - 8180:8080
+      - 8180:8080
     environment:
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
@@ -41,30 +42,69 @@ services:
       KC_HTTP_ENABLED: "true"
     volumes:
       - ./keycloak:/opt/keycloak/data/import
+
   kafka:
     image: apache/kafka:3.7.0
     container_name: interview-platform-kafka
     ports:
-        - 29092:29092
+      - 29092:29092
     environment:
-        KAFKA_NODE_ID: 1
-        KAFKA_PROCESS_ROLES: broker,controller
-        KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
-        KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-        KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
-        KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
-        KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
-        KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-        KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-        KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-        KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
       start_period: 30s
       interval: 5s
       timeout: 5s
       retries: 5
-volumes:
-    db_data:
 
-  
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    container_name: interview-platform-api-gateway
+    ports:
+      - 8080:8080
+    environment:
+      APP_KEYCLOAK_ISSUER_URI: ${APP_KEYCLOAK_ISSUER_URI}
+      APP_KEYCLOAK_JWK_SET_URI: ${APP_KEYCLOAK_JWK_SET_URI}
+      APP_CORS_ALLOWED_ORIGIN: ${APP_CORS_ALLOWED_ORIGIN}
+      APP_INTERVIEW_SERVICE_URI: ${APP_INTERVIEW_SERVICE_URI}
+    depends_on:
+      - keycloak
+      - interview-service
+
+  interview-service:
+    build:
+      context: .
+      dockerfile: interview-service/Dockerfile
+    container_name: interview-platform-interview-service
+    ports:
+      - 8081:8081
+    environment:
+      APP_KEYCLOAK_ISSUER_URI: ${APP_KEYCLOAK_ISSUER_URI}
+      APP_KEYCLOAK_JWK_SET_URI: ${APP_KEYCLOAK_JWK_SET_URI}
+    depends_on:
+      - keycloak
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    container_name: interview-platform-notification-service
+    ports:
+      - 8082:8082
+    depends_on:
+      - kafka
+
+volumes:
+  db_data:

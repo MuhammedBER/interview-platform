@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: interview-service
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${APP_KEYCLOAK_ISSUER_URI}
+          jwk-set-uri: ${APP_KEYCLOAK_JWK_SET_URI}
+server.port: 8081
