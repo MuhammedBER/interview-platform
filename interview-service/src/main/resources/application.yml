@@ -1,10 +1,26 @@
 spring:
   application:
     name: interview-service
+  datasource:
+    url: ${APP_DATASOURCE_URL}
+    username: ${APP_DATASOURCE_USERNAME}
+    password: ${APP_DATASOURCE_PASSWORD}
+  flyway:
+    enabled: true
+    schemas: interview
+    default-schema: interview
+    create-schemas: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+      properties:
+        hibernate:
+          default_schema: interview
+        open-in-view: false
   security:
     oauth2:
       resourceserver:
         jwt:
           issuer-uri: ${APP_KEYCLOAK_ISSUER_URI}
-          jwk-set-uri: ${APP_KEYCLOAK_JWK_SET_URI}
+          wk-set-uri: ${APP_KEYCLOAK_JWK_SET_URI}
 server.port: 8081

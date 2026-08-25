@@ -40,8 +40,15 @@ services:
       KC_HOSTNAME_STRICT: "false"
       KC_HOSTNAME_STRICT_BACKCHANNEL: "false"
       KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
     volumes:
       - ./keycloak:/opt/keycloak/data/import
+    healthcheck:
+      test: "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'HTTP/1.1 200'"
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
 
   kafka:
     image: apache/kafka:3.7.0
@@ -80,8 +87,16 @@ services:
       APP_CORS_ALLOWED_ORIGIN: ${APP_CORS_ALLOWED_ORIGIN}
       APP_INTERVIEW_SERVICE_URI: ${APP_INTERVIEW_SERVICE_URI}
     depends_on:
-      - keycloak
-      - interview-service
+      keycloak:
+        condition: service_healthy
+      interview-service:
+        condition: service_started
+    healthcheck:
+      test: [ "CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /actuator/health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && cat <&3 | grep -q 'HTTP/1.1 200'" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   interview-service:
     build:
@@ -93,9 +108,20 @@ services:
     environment:
       APP_KEYCLOAK_ISSUER_URI: ${APP_KEYCLOAK_ISSUER_URI}
       APP_KEYCLOAK_JWK_SET_URI: ${APP_KEYCLOAK_JWK_SET_URI}
+      APP_DATASOURCE_URL: ${APP_DATASOURCE_URL}
+      APP_DATASOURCE_USERNAME: ${APP_DATASOURCE_USERNAME}
+      APP_DATASOURCE_PASSWORD: ${APP_DATASOURCE_PASSWORD}
     depends_on:
-      - keycloak
-
+      keycloak:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8081 && echo -e 'GET /actuator/health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && cat <&3 | grep -q 'HTTP/1.1 200'" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
   notification-service:
     build:
       context: .
@@ -104,7 +130,14 @@ services:
     ports:
       - 8082:8082
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8082 && echo -e 'GET /actuator/health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && cat <&3 | grep -q 'HTTP/1.1 200'" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
 volumes:
   db_data:
