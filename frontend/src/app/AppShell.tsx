@@ -1,5 +1,9 @@
-import { Outlet } from 'react-router-dom';
+import { NavLink, Outlet } from 'react-router-dom';
 import { logout } from '../lib/keycloak';
+
+const navLinkBase =
+  'block rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900';
+const navLinkActive = 'bg-blue-50 text-blue-700';
 
 export default function AppShell() {
   return (
@@ -8,8 +12,26 @@ export default function AppShell() {
         <div className="flex h-14 items-center border-b border-gray-200 px-4">
           <span className="text-sm font-semibold text-blue-600">Interview Platform</span>
         </div>
-        <nav className="px-4 py-4">
-          <p className="text-xs text-gray-500">Navigation placeholder — screens arrive in a later step.</p>
+        <nav className="space-y-1 px-3 py-4">
+          <NavLink
+            to="/"
+            end
+            className={({ isActive }) => `${navLinkBase} ${isActive ? navLinkActive : ''}`}
+          >
+            Dashboard
+          </NavLink>
+          <NavLink
+            to="/interviews"
+            className={({ isActive }) => `${navLinkBase} ${isActive ? navLinkActive : ''}`}
+          >
+            Interviews
+          </NavLink>
+          <NavLink
+            to="/positions"
+            className={({ isActive }) => `${navLinkBase} ${isActive ? navLinkActive : ''}`}
+          >
+            Positions
+          </NavLink>
         </nav>
       </aside>
 

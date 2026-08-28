@@ -1,7 +1,9 @@
 import Keycloak from 'keycloak-js';
 
+const DEFAULT_KEYCLOAK_URL = 'http://localhost:8180';
+
 export const keycloak = new Keycloak({
-  url: 'http://localhost:8180',
+  url: (import.meta.env.VITE_KEYCLOAK_URL as string | undefined) || DEFAULT_KEYCLOAK_URL,
   realm: 'interview-platform',
   clientId: 'interview-web',
 });
