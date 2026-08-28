@@ -68,7 +68,15 @@ public class InterviewService {
                 request.durationMinutes(),
                 InterviewStatus.SCHEDULED);
 
-        if (request.jobPositionId() != null) {
+        if (request.segments() != null && !request.segments().isEmpty()) {
+            // The recruiter supplied an explicit segment list (e.g. copied from a
+            // position's templates and then edited/reordered in the schedule form).
+            // Honour the recruiter's snapshot rather than re-copying from the position.
+            for (ScheduleInterviewRequest.ScheduleSegmentInput seg : request.segments()) {
+                interview.addSegment(interviewMapper.toNewSegment(seg));
+            }
+        } else if (request.jobPositionId() != null) {
+            // No explicit segments: copy-on-apply from the position's current templates.
             JobPosition position = jobPositionRepository
                     .findByIdAndOrganizationId(request.jobPositionId(), organizationId)
                     .orElseThrow(() -> new ResponseStatusException(
@@ -77,13 +85,8 @@ public class InterviewService {
                 interview.addSegment(interviewMapper.copyFromTemplate(template));
             }
         } else {
-            if (request.segments() == null || request.segments().isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "An interview with no position must include at least one segment");
-            }
-            for (ScheduleInterviewRequest.ScheduleSegmentInput seg : request.segments()) {
-                interview.addSegment(interviewMapper.toNewSegment(seg));
-            }
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "An interview with no position must include at least one segment");
         }
 
         Interview saved = interviewRepository.save(interview);
