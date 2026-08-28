@@ -81,6 +81,22 @@ public class Interview {
     segment.setInterview(null);
   }
 
+  public void setStatus(InterviewStatus status) {
+    this.status = status;
+  }
+
+  public void setScheduledStart(Instant scheduledStart) {
+    this.scheduledStart = scheduledStart;
+  }
+
+  public void setDurationMinutes(int durationMinutes) {
+    this.durationMinutes = durationMinutes;
+  }
+
+  public void setCancelledAt(Instant cancelledAt) {
+    this.cancelledAt = cancelledAt;
+  }
+
   public UUID getId() {
     return id;
   }

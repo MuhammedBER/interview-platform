@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -146,5 +147,45 @@ public class InterviewService {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Interview not found"));
         return interviewMapper.toResponse(interview);
+    }
+
+    public InterviewResponse reschedule(UUID id, RescheduleInterviewRequest request) {
+        Interview interview = findScheduledOrThrow(id);
+        interview.setScheduledStart(request.scheduledStart());
+        if (request.durationMinutes() != null) {
+            interview.setDurationMinutes(request.durationMinutes());
+        }
+        return interviewMapper.toResponse(interview);
+    }
+
+    public InterviewResponse cancel(UUID id) {
+        Interview interview = findScheduledOrThrow(id);
+        interview.setStatus(InterviewStatus.CANCELLED);
+        interview.setCancelledAt(Instant.now());
+        return interviewMapper.toResponse(interview);
+    }
+
+    public InterviewResponse noShow(UUID id) {
+        Interview interview = findScheduledOrThrow(id);
+        interview.setStatus(InterviewStatus.NO_SHOW);
+        return interviewMapper.toResponse(interview);
+    }
+
+    public InterviewResponse complete(UUID id) {
+        Interview interview = findScheduledOrThrow(id);
+        interview.setStatus(InterviewStatus.COMPLETED);
+        return interviewMapper.toResponse(interview);
+    }
+
+    private Interview findScheduledOrThrow(UUID id) {
+        UUID organizationId = tenantContext.getOrganizationId();
+        Interview interview = interviewRepository.findByIdAndOrganizationId(id, organizationId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Interview not found"));
+        if (interview.getStatus() != InterviewStatus.SCHEDULED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Interview cannot be modified; current status is " + interview.getStatus());
+        }
+        return interview;
     }
 }

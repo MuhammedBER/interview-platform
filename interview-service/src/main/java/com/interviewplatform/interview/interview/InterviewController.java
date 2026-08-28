@@ -40,4 +40,25 @@ public class InterviewController {
     public InterviewResponse get(@PathVariable UUID id) {
         return interviewService.get(id);
     }
+
+    @PostMapping("/{id}/reschedule")
+    public InterviewResponse reschedule(@PathVariable UUID id,
+                                        @Valid @RequestBody RescheduleInterviewRequest request) {
+        return interviewService.reschedule(id, request);
+    }
+
+    @PostMapping("/{id}/cancel")
+    public InterviewResponse cancel(@PathVariable UUID id) {
+        return interviewService.cancel(id);
+    }
+
+    @PostMapping("/{id}/no-show")
+    public InterviewResponse noShow(@PathVariable UUID id) {
+        return interviewService.noShow(id);
+    }
+
+    @PostMapping("/{id}/complete")
+    public InterviewResponse complete(@PathVariable UUID id) {
+        return interviewService.complete(id);
+    }
 }
