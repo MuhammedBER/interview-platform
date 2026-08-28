@@ -13,7 +13,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -89,5 +93,58 @@ public class InterviewService {
                                      ScheduleInterviewRequest.CandidateInput input) {
         String phone = (input.phone() != null) ? input.phone() : "";
         return new Candidate(organizationId, input.firstName(), input.lastName(), input.email(), phone);
+    }
+
+    @Transactional(readOnly = true)
+    public List<InterviewListItemResponse> list(InterviewStatus statusOrNull) {
+        UUID organizationId = tenantContext.getOrganizationId();
+
+        Map<UUID, Candidate> candidatesById = candidateRepository
+                .findAllByOrganizationId(organizationId).stream()
+                .collect(Collectors.toMap(Candidate::getId, Function.identity()));
+        Map<UUID, JobPosition> positionsById = jobPositionRepository
+                .findAllByOrganizationId(organizationId).stream()
+                .collect(Collectors.toMap(JobPosition::getId, Function.identity()));
+
+        return interviewRepository.findAllByOrganizationId(organizationId).stream()
+                .filter(interview -> statusOrNull == null || interview.getStatus() == statusOrNull)
+                .map(interview -> toListItem(interview, candidatesById, positionsById))
+                .toList();
+    }
+
+    private InterviewListItemResponse toListItem(Interview interview,
+                                                 Map<UUID, Candidate> candidatesById,
+                                                 Map<UUID, JobPosition> positionsById) {
+        Candidate candidate = candidatesById.get(interview.getCandidateId());
+        String candidateName = (candidate == null) ? null
+                : (candidate.getFirstName() + " " + candidate.getLastName()).trim();
+        String candidateEmail = (candidate == null) ? null : candidate.getEmail();
+
+        String positionName = null;
+        if (interview.getJobPositionId() != null) {
+            JobPosition position = positionsById.get(interview.getJobPositionId());
+            if (position != null) {
+                positionName = position.getName();
+            }
+        }
+
+        return new InterviewListItemResponse(
+                interview.getId(),
+                candidateName,
+                candidateEmail,
+                positionName,
+                interview.getScheduledStart(),
+                interview.getDurationMinutes(),
+                interview.getSegments().size(),
+                interview.getStatus());
+    }
+
+    @Transactional(readOnly = true)
+    public InterviewResponse get(UUID id) {
+        UUID organizationId = tenantContext.getOrganizationId();
+        Interview interview = interviewRepository.findByIdAndOrganizationId(id, organizationId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Interview not found"));
+        return interviewMapper.toResponse(interview);
     }
 }
