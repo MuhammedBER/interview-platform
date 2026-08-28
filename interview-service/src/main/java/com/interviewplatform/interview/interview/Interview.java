@@ -54,7 +54,14 @@ public class Interview {
 
   public Interview() {}
 
-  public Interview(UUID organizationId, UUID recruiterId, UUID candidateId, UUID jobPositionId, Instant scheduledStart, int durationMinutes, InterviewStatus status) {
+  public Interview(
+      UUID organizationId,
+      UUID recruiterId,
+      UUID candidateId,
+      UUID jobPositionId,
+      Instant scheduledStart,
+      int durationMinutes,
+      InterviewStatus status) {
     this.organizationId = organizationId;
     this.recruiterId = recruiterId;
     this.candidateId = candidateId;
@@ -63,12 +70,66 @@ public class Interview {
     this.durationMinutes = durationMinutes;
     this.status = status;
   }
+
   public void addSegment(InterviewSegment segment) {
     segments.add(segment);
     segment.setInterview(this);
   }
-    public void removeSegment(InterviewSegment segment) {
-        segments.remove(segment);
-        segment.setInterview(null);
-    }
+
+  public void removeSegment(InterviewSegment segment) {
+    segments.remove(segment);
+    segment.setInterview(null);
+  }
+
+  public UUID getId() {
+    return id;
+  }
+
+  public UUID getRecruiterId() {
+    return recruiterId;
+  }
+
+  public Instant getReminder1hSentAt() {
+    return reminder1hSentAt;
+  }
+
+  public Instant getCancelledAt() {
+    return cancelledAt;
+  }
+
+  public boolean isAdmitted() {
+    return admitted;
+  }
+
+  public int getDurationMinutes() {
+    return durationMinutes;
+  }
+
+  public InterviewStatus getStatus() {
+    return status;
+  }
+
+  public Instant getScheduledStart() {
+    return scheduledStart;
+  }
+
+  public UUID getJobPositionId() {
+    return jobPositionId;
+  }
+
+  public UUID getCandidateId() {
+    return candidateId;
+  }
+
+  public UUID getOrganizationId() {
+    return organizationId;
+  }
+
+  public Instant getReminder24hSentAt() {
+    return reminder24hSentAt;
+  }
+
+  public List<InterviewSegment> getSegments() {
+    return segments;
+  }
 }

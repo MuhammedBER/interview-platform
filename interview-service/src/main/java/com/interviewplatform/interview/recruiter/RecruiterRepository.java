@@ -10,4 +10,5 @@ public interface RecruiterRepository extends JpaRepository<Recruiter, UUID> {
     Optional<Recruiter> findByIdAndOrganizationId(UUID id, UUID organizationId);
     List<Recruiter> findAllByOrganizationId(UUID organizationId);
     Optional<Recruiter> findByKeycloakSubject(String keycloakSubject);
+    Optional<Recruiter> findByKeycloakSubjectAndOrganizationId(String keycloakSubject, UUID organizationId);
 }

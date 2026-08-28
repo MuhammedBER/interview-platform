@@ -25,4 +25,19 @@ public class TenantContext {
 
         return UUID.fromString(organizationId);
     }
+
+    public String getKeycloakSubject() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !(authentication.getPrincipal() instanceof Jwt jwt)) {
+            throw new IllegalStateException("No authenticated JWT in the security context");
+        }
+
+        String subject = jwt.getSubject();
+        if (subject == null || subject.isBlank()) {
+            throw new IllegalStateException("Token is missing the subject (sub) claim");
+        }
+
+        return subject;
+    }
 }
