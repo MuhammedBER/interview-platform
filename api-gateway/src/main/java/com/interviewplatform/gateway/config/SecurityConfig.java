@@ -10,13 +10,15 @@ import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.reactive.CorsConfigurationSource;
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Configuration
 @EnableWebFluxSecurity
 public class SecurityConfig {
     @Value("${allowed-origin:http://localhost:5173}")
-    private String allowedOrigin;
+    private String allowedOrigins;
 
     @Bean
     public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
@@ -32,7 +34,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(allowedOrigin));
+        config.setAllowedOrigins(parseOrigins(allowedOrigins));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
@@ -40,6 +42,15 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;
+    }
+
+    // Allowed origins may be a comma-separated list covering the dev server and
+    // the containerised nginx frontend.
+    private List<String> parseOrigins(String raw) {
+        return Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .collect(Collectors.toList());
     }
 
 }
