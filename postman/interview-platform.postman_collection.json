@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "d2214041-69ee-42ab-8b2a-d08000f1c1aa",
-    "name": "Interview Platform — Phase 1 / S3 (Auth Spine)",
-    "description": "Proves the auth spine of Phase 1: public health path, Keycloak password-grant login (token stored in a variable), and the protected endpoint through the gateway returning 401 without a token and 200 with it, with issuer and organization_id claim assertions.\n\nFILL ONLY THESE (secrets, Collection -> Variables tab):\n- recruiterAUsername / recruiterAPassword — org A recruiter. Username in the export is 'recruiter1'.\n- recruiterBUsername / recruiterBPassword — org B recruiter. Username in the export is 'recruiter2'.\n\nEverything else is concrete, read from keycloak/realm-export.json and MeController.java:\n- orgAId = 11111111-1111-1111-1111-111111111111\n- orgBId = 22222222-2222-2222-2222-222222222222\n- /api/me returns keys 'subject' and 'organizationId'\n- interview-web has directAccessGrantsEnabled=true (password grant works)\n- issuer is http://localhost:8180/realms/interview-platform in all three places\n\nDo NOT paste an access token by hand: the Auth requests set {{accessToken}} / {{accessTokenB}} in their test scripts.\n\nRun order (top to bottom, one click): Health -> Auth (sets tokens) -> Protected endpoint.",
+    "name": "Interview Platform — Phase 1 / S3 (Auth Spine) + Phase 3 (Lifecycle & Join)",
+    "description": "Proves the auth spine of Phase 1: public health path, Keycloak password-grant login (token stored in a variable), and the protected endpoint through the gateway returning 401 without a token and 200 with it, with issuer and organization_id claim assertions. Then drives a Phase 3 interview through its full lifecycle (schedule -> regenerate link -> join-token validation -> lobby before/after admit -> reschedule -> cross-org 404 -> revoke link -> cancel) plus the reachable join-token refusal branches (NOT_FOUND, REVOKED, OUTSIDE_WINDOW).\n\nSecrets are pre-filled in Collection -> Variables (passwords equal the username):\n- recruiterAUsername / recruiterAPassword — org A recruiter 'recruiter1' / 'recruiter1'\n- recruiterBUsername / recruiterBPassword — org B recruiter 'recruiter2' / 'recruiter2'\n\nEverything else is concrete, read from keycloak/realm-export.json and MeController.java:\n- orgAId = 11111111-1111-1111-1111-111111111111\n- orgBId = 22222222-2222-2222-2222-222222222222\n- /api/me returns keys 'subject' and 'organizationId'\n- interview-web has directAccessGrantsEnabled=true (password grant works)\n- issuer is http://localhost:8180/realms/interview-platform in all three places\n\nDo NOT paste an access token by hand: the Auth requests set {{accessToken}} / {{accessTokenB}} in their test scripts.\n\nRun order (top to bottom, one click): Health -> Auth (sets tokens) -> Protected endpoint -> Phase 3.\n\nNote on Phase 3 join tokens: the validity window is [scheduledStart - 15 min, scheduledStart + 30 min]. The main interview is scheduled ~5 minutes in the future (via a pre-request script) so its token is valid while the public validate/lobby requests run; the OUTSIDE_WINDOW refusal uses a separate interview scheduled in the past. USED and EXPIRED are refusal branches in code but are NOT reachable via HTTP in this phase.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "46902495",
     "_collection_link": "https://go.postman.co/collection/46902495-d2214041-69ee-42ab-8b2a-d08000f1c1aa?source=collection_link"
@@ -347,6 +347,814 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "4 — Phase 3: Interview Lifecycle & Candidate Join",
+      "description": "Drives one interview through its full lifecycle (schedule -> regenerate link -> join-token validation -> lobby before admit -> admit -> lobby after admit -> reschedule -> cross-org 404 -> revoke link -> cancel) using recruiter A (org A) and the public, no-auth join-token endpoints, then covers the reachable join-token refusal branches (NOT_FOUND, REVOKED, OUTSIDE_WINDOW).\n\nPrerequisite: run folder '2 — Auth (Keycloak)' first so {{accessToken}} holds recruiter A's token. Set recruiterAPassword in Collection -> Variables before running.\n\nState is captured in collection variables and used by later requests in this folder:\n- {{interviewId}} — the live interview (org A)\n- {{rawToken}} — its current join token (revoked on reschedule/revoke/cancel)\n- {{bogusToken}} — arbitrary token that never exists (NOT_FOUND)\n- {{pastInterviewId}} / {{pastRawToken}} — a separate interview scheduled in the past, whose token falls outside its validity window (OUTSIDE_WINDOW)\n\nEvery schedule/reschedule/cancel/regenerate here also publishes a Kafka event, so check MailHog (http://localhost:8025) for the corresponding candidate emails (Step B proof).\n\nUSED and EXPIRED are refusal branches in PublicJoinService.resolveToken but are NOT reachable via any public HTTP endpoint in this phase (no endpoint marks a token USED, and nothing sets token status EXPIRED) — they are covered by unit tests only.",
+      "item": [
+        {
+          "name": "POST /api/interviews — schedule (recruiter A)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Schedule the interview near-term (now + 5 min) so its join token",
+                  "// falls inside the validity window [start-15m, start+30m] while the",
+                  "// public validate/lobby requests run. A far-future start makes the",
+                  "// token OUTSIDE_WINDOW until 15 minutes before the interview.",
+                  "var start = new Date(Date.now() + 5 * 60 * 1000).toISOString();",
+                  "pm.collectionVariables.set('scheduledStart', start);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "pm.test('body.id is a UUID', function () {",
+                  "    pm.expect(json.id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);",
+                  "});",
+                  "pm.test('body.status equals SCHEDULED', function () {",
+                  "    pm.expect(json.status).to.eql('SCHEDULED');",
+                  "});",
+                  "pm.test('body.admitted equals false', function () {",
+                  "    pm.expect(json.admitted).to.eql(false);",
+                  "});",
+                  "pm.collectionVariables.set('interviewId', json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"candidate\": {\n    \"firstName\": \"Jane\",\n    \"lastName\": \"Candidate\",\n    \"email\": \"jane@example.com\",\n    \"phone\": \"\"\n  },\n  \"scheduledStart\": \"{{scheduledStart}}\",\n  \"durationMinutes\": 60,\n  \"segments\": [\n    {\n      \"title\": \"Intro\",\n      \"orderIndex\": 0,\n      \"plannedMinutes\": 15,\n      \"preparedQuestions\": [\"Tell me about yourself\"]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "interviews"
+              ]
+            },
+            "description": "Recruiter A schedules an interview starting ~5 minutes from now (so its join token stays inside its validity window for the public tests below). Captures {{interviewId}}. Publishes interview.scheduled (check MailHog)."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/interviews/{{interviewId}}/regenerate-link",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "pm.test('body.joinUrl is present', function () {",
+                  "    pm.expect(json.joinUrl).to.be.a('string');",
+                  "});",
+                  "pm.test('body.joinUrl contains /join/', function () {",
+                  "    pm.expect(json.joinUrl).to.include('/join/');",
+                  "});",
+                  "",
+                  "var token = json.joinUrl.split('/join/')[1];",
+                  "pm.test('join token is non-empty base64url', function () {",
+                  "    pm.expect(token).to.be.a('string').and.to.have.length.above(40);",
+                  "});",
+                  "pm.collectionVariables.set('rawToken', token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": ""
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{interviewId}}/regenerate-link",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "interviews",
+                "{{interviewId}}",
+                "regenerate-link"
+              ]
+            },
+            "description": "Returns a fresh join URL and exposes the raw join token. The token is parsed out and stored as {{rawToken}} for the public join-token requests. Publishes interview.link-regenerated (check MailHog)."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/public/join-tokens/{{rawToken}} — validate (success)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 (public, no auth)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "pm.test('body.interviewTitle equals Interview', function () {",
+                  "    pm.expect(json.interviewTitle).to.eql('Interview');",
+                  "});",
+                  "pm.test('body.scheduledStart is present', function () {",
+                  "    pm.expect(json.scheduledStart).to.be.a('string');",
+                  "});",
+                  "pm.test('body.candidateName equals Jane Candidate', function () {",
+                  "    pm.expect(json.candidateName).to.eql('Jane Candidate');",
+                  "});",
+                  "pm.test('body.recruiterName is non-empty', function () {",
+                  "    pm.expect(json.recruiterName).to.be.a('string').and.to.have.length.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/public/join-tokens/{{rawToken}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "public",
+                "join-tokens",
+                "{{rawToken}}"
+              ]
+            },
+            "description": "Public endpoint (permitAll at gateway and service): validates a live join token with NO Authorization header and returns interview metadata."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/public/join-tokens/{{rawToken}}/status — lobby BEFORE admit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "pm.test('body.admitted equals false before admit', function () {",
+                  "    pm.expect(json.admitted).to.eql(false);",
+                  "});",
+                  "pm.test('body.scheduledStart is present', function () {",
+                  "    pm.expect(json.scheduledStart).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/public/join-tokens/{{rawToken}}/status",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "public",
+                "join-tokens",
+                "{{rawToken}}",
+                "status"
+              ]
+            },
+            "description": "Public lobby status before the recruiter admits the candidate: admitted=false."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/interviews/{{interviewId}} (recruiter A)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "pm.test('body.id equals {{interviewId}}', function () {",
+                  "    pm.expect(json.id).to.eql(pm.collectionVariables.get('interviewId'));",
+                  "});",
+                  "pm.test('body.status equals SCHEDULED', function () {",
+                  "    pm.expect(json.status).to.eql('SCHEDULED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{interviewId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "interviews",
+                "{{interviewId}}"
+              ]
+            },
+            "description": "Recruiter A (owning org) fetches the interview."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/interviews/{{interviewId}}/admit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "pm.test('body.admitted equals true after admit', function () {",
+                  "    pm.expect(json.admitted).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": ""
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{interviewId}}/admit",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "interviews",
+                "{{interviewId}}",
+                "admit"
+              ]
+            },
+            "description": "Recruiter admits the candidate for this interview."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/public/join-tokens/{{rawToken}}/status — lobby AFTER admit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "pm.test('body.admitted equals true after admit', function () {",
+                  "    pm.expect(json.admitted).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/public/join-tokens/{{rawToken}}/status",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "public",
+                "join-tokens",
+                "{{rawToken}}",
+                "status"
+              ]
+            },
+            "description": "Public lobby status flips to admitted=true once the candidate is admitted."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/interviews/{{interviewId}}/reschedule",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "pm.test('body.status stays SCHEDULED', function () {",
+                  "    pm.expect(json.status).to.eql('SCHEDULED');",
+                  "});",
+                  "pm.test('body.scheduledStart equals the new time', function () {",
+                  "    pm.expect(json.scheduledStart).to.eql('2026-09-10T10:00:00Z');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scheduledStart\": \"2026-09-10T10:00:00Z\",\n  \"durationMinutes\": 60\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{interviewId}}/reschedule",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "interviews",
+                "{{interviewId}}",
+                "reschedule"
+              ]
+            },
+            "description": "Reschedules the interview. This regenerates the join token, which REVOKES {{rawToken}} (the lobby-status / refresh flows already ran above, so {{rawToken}} is now stale and will be reused for the REVOKED refusal later). Publishes interview.rescheduled (check MailHog)."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/interviews/{{interviewId}} — cross-org (recruiter B, expect 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessTokenB}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{interviewId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "interviews",
+                "{{interviewId}}"
+              ]
+            },
+            "description": "Recruiter B (org B) tries to read an org A interview: the interviewRepository filters by organizationId, so it 404s. This is the representative tenant-isolation check; every protected /api/interviews endpoint follows the same org-scoped lookup, so the pattern holds for get/list/reschedule/cancel/etc."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/interviews/{{interviewId}}/revoke-link",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": ""
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{interviewId}}/revoke-link",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "interviews",
+                "{{interviewId}}",
+                "revoke-link"
+              ]
+            },
+            "description": "Recruiter explicitly revokes the interview's active join tokens. Returns 204 No Content."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/interviews/{{interviewId}}/cancel",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "pm.test('body.status equals CANCELLED', function () {",
+                  "    pm.expect(json.status).to.eql('CANCELLED');",
+                  "});",
+                  "pm.test('body.cancelledAt is present', function () {",
+                  "    pm.expect(json.cancelledAt).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": ""
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{interviewId}}/cancel",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "interviews",
+                "{{interviewId}}",
+                "cancel"
+              ]
+            },
+            "description": "Cancels the interview (status CANCELLED). Also revokes any remaining active tokens. Publishes interview.cancelled (check MailHog)."
+          },
+          "response": []
+        },
+        {
+          "name": "REFUSAL — GET /api/public/join-tokens/{{bogusToken}} (NOT_FOUND, 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "var json;",
+                  "pm.test('Response body carries reason NOT_FOUND', function () {",
+                  "    json = pm.response.json();",
+                  "    pm.expect(json.reason).to.eql('NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/public/join-tokens/{{bogusToken}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "public",
+                "join-tokens",
+                "{{bogusToken}}"
+              ]
+            },
+            "description": "A token that was never issued: no row matches the SHA-256 hash, so the service refuses with 404 NOT_FOUND."
+          },
+          "response": []
+        },
+        {
+          "name": "REFUSAL — GET /api/public/join-tokens/{{rawToken}} (REVOKED, 410)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 410', function () {",
+                  "    pm.response.to.have.status(410);",
+                  "});",
+                  "",
+                  "var json;",
+                  "pm.test('Response body carries reason REVOKED', function () {",
+                  "    json = pm.response.json();",
+                  "    pm.expect(json.reason).to.eql('REVOKED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/public/join-tokens/{{rawToken}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "public",
+                "join-tokens",
+                "{{rawToken}}"
+              ]
+            },
+            "description": "{{rawToken}} was revoked when the interview was rescheduled (and again by revoke-link/cancel), so a previously-stale token now refuses with 410 REVOKED."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/interviews — schedule (in the past, for OUTSIDE_WINDOW)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "pm.collectionVariables.set('pastInterviewId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"candidate\": {\n    \"firstName\": \"Paul\",\n    \"lastName\": \"Past\",\n    \"email\": \"paul.past@example.com\",\n    \"phone\": \"\"\n  },\n  \"scheduledStart\": \"2026-01-01T10:00:00Z\",\n  \"durationMinutes\": 30,\n  \"segments\": [\n    {\n      \"title\": \"Intro\",\n      \"orderIndex\": 0,\n      \"plannedMinutes\": 15,\n      \"preparedQuestions\": []\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "interviews"
+              ]
+            },
+            "description": "A second interview scheduled with a start time far in the past. Its join token's validity window [start-15m, start+30m] is already over, which is what produces the OUTSIDE_WINDOW refusal below."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/interviews/{{pastInterviewId}}/regenerate-link",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var token = pm.response.json().joinUrl.split('/join/')[1];",
+                  "pm.test('join token captured', function () {",
+                  "    pm.expect(token).to.be.a('string').and.to.have.length.above(40);",
+                  "});",
+                  "pm.collectionVariables.set('pastRawToken', token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": ""
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{pastInterviewId}}/regenerate-link",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "interviews",
+                "{{pastInterviewId}}",
+                "regenerate-link"
+              ]
+            },
+            "description": "Exposes the join token for the past-scheduled interview so it can be validated below."
+          },
+          "response": []
+        },
+        {
+          "name": "REFUSAL — GET /api/public/join-tokens/{{pastRawToken}} (OUTSIDE_WINDOW, 403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "",
+                  "var json;",
+                  "pm.test('Response body carries reason OUTSIDE_WINDOW', function () {",
+                  "    json = pm.response.json();",
+                  "    pm.expect(json.reason).to.eql('OUTSIDE_WINDOW');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/public/join-tokens/{{pastRawToken}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "public",
+                "join-tokens",
+                "{{pastRawToken}}"
+              ]
+            },
+            "description": "The token is valid (PENDING) but now is after validUntil given the past scheduledStart, so the service refuses with 403 OUTSIDE_WINDOW."
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "event": [
@@ -396,7 +1204,7 @@
     },
     {
       "key": "recruiterAPassword",
-      "value": ""
+      "value": "recruiter1"
     },
     {
       "key": "recruiterBUsername",
@@ -404,7 +1212,7 @@
     },
     {
       "key": "recruiterBPassword",
-      "value": ""
+      "value": "recruiter2"
     },
     {
       "key": "orgAId",
@@ -420,6 +1228,30 @@
     },
     {
       "key": "accessTokenB",
+      "value": ""
+    },
+    {
+      "key": "scheduledStart",
+      "value": ""
+    },
+    {
+      "key": "interviewId",
+      "value": ""
+    },
+    {
+      "key": "rawToken",
+      "value": ""
+    },
+    {
+      "key": "bogusToken",
+      "value": "bogus-or-nonexistent-token-1234567890"
+    },
+    {
+      "key": "pastInterviewId",
+      "value": ""
+    },
+    {
+      "key": "pastRawToken",
       "value": ""
     }
   ]
