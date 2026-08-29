@@ -1,0 +1,31 @@
+﻿<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Interview Cancelled</title>
+</head>
+<body style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 24px;">
+  <h2 style="color: #d93025;">Your interview has been cancelled</h2>
+  <p>Hi <span th:text="${candidateName}">Candidate</span>,</p>
+  <p>We regret to inform you that the following interview has been cancelled:</p>
+  <table style="width:100%; border-collapse:collapse; margin: 16px 0;">
+    <tr>
+      <td style="padding: 8px; font-weight: bold; width: 40%;">Interview</td>
+      <td style="padding: 8px;" th:text="${interviewTitle}">Title</td>
+    </tr>
+    <tr style="background:#f5f5f5;">
+      <td style="padding: 8px; font-weight: bold;">Was Scheduled For</td>
+      <td style="padding: 8px;" th:text="${scheduledStart}">Date</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; font-weight: bold;">Recruiter</td>
+      <td style="padding: 8px;" th:text="${recruiterName}">Recruiter</td>
+    </tr>
+  </table>
+  <p>If you believe this is an error or have questions, please contact your recruiter directly.</p>
+  <hr style="margin: 32px 0; border: none; border-top: 1px solid #eee;"/>
+  <p style="font-size: 12px; color: #888;">
+    This is an automated message from the Interview Platform. Please do not reply to this email.
+  </p>
+</body>
+</html>
