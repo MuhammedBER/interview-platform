@@ -8,6 +8,14 @@ import com.interviewplatform.interview.position.TemplateSegment;
 import com.interviewplatform.interview.recruiter.Recruiter;
 import com.interviewplatform.interview.recruiter.RecruiterRepository;
 import com.interviewplatform.interview.tenancy.TenantContext;
+import com.interviewplatform.interview.jointoken.JoinTokenService;
+import com.interviewplatform.interview.kafka.InterviewCancelledDomainEvent;
+import com.interviewplatform.interview.kafka.InterviewEvent;
+import com.interviewplatform.interview.kafka.InterviewLinkRegeneratedDomainEvent;
+import com.interviewplatform.interview.kafka.InterviewRescheduledDomainEvent;
+import com.interviewplatform.interview.kafka.InterviewScheduledDomainEvent;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,19 +38,28 @@ public class InterviewService {
     private final JobPositionRepository jobPositionRepository;
     private final InterviewMapper interviewMapper;
     private final TenantContext tenantContext;
+    private final JoinTokenService joinTokenService;
+    private final ApplicationEventPublisher eventPublisher;
+    private final String joinBaseUrl;
 
     public InterviewService(InterviewRepository interviewRepository,
                             CandidateRepository candidateRepository,
                             RecruiterRepository recruiterRepository,
                             JobPositionRepository jobPositionRepository,
                             InterviewMapper interviewMapper,
-                            TenantContext tenantContext) {
+                            TenantContext tenantContext,
+                            JoinTokenService joinTokenService,
+                            ApplicationEventPublisher eventPublisher,
+                            @Value("${app.join.base-url:http://localhost:3000/join}") String joinBaseUrl) {
         this.interviewRepository = interviewRepository;
         this.candidateRepository = candidateRepository;
         this.recruiterRepository = recruiterRepository;
         this.jobPositionRepository = jobPositionRepository;
         this.interviewMapper = interviewMapper;
         this.tenantContext = tenantContext;
+        this.joinTokenService = joinTokenService;
+        this.eventPublisher = eventPublisher;
+        this.joinBaseUrl = joinBaseUrl;
     }
 
     public InterviewResponse schedule(ScheduleInterviewRequest request) {
@@ -68,19 +85,18 @@ public class InterviewService {
                 request.durationMinutes(),
                 InterviewStatus.SCHEDULED);
 
+        JobPosition position = null;
+        if (request.jobPositionId() != null) {
+            position = jobPositionRepository
+                    .findByIdAndOrganizationId(request.jobPositionId(), organizationId)
+                    .orElse(null);
+        }
+
         if (request.segments() != null && !request.segments().isEmpty()) {
-            // The recruiter supplied an explicit segment list (e.g. copied from a
-            // position's templates and then edited/reordered in the schedule form).
-            // Honour the recruiter's snapshot rather than re-copying from the position.
             for (ScheduleInterviewRequest.ScheduleSegmentInput seg : request.segments()) {
                 interview.addSegment(interviewMapper.toNewSegment(seg));
             }
-        } else if (request.jobPositionId() != null) {
-            // No explicit segments: copy-on-apply from the position's current templates.
-            JobPosition position = jobPositionRepository
-                    .findByIdAndOrganizationId(request.jobPositionId(), organizationId)
-                    .orElseThrow(() -> new ResponseStatusException(
-                            HttpStatus.NOT_FOUND, "Position not found"));
+        } else if (position != null) {
             for (TemplateSegment template : position.getTemplates()) {
                 interview.addSegment(interviewMapper.copyFromTemplate(template));
             }
@@ -90,6 +106,28 @@ public class InterviewService {
         }
 
         Interview saved = interviewRepository.save(interview);
+
+        String rawToken = joinTokenService.generateJoinToken(saved);
+        String joinUrl = joinBaseUrl + "/" + rawToken;
+
+        String interviewTitle = (position != null) ? position.getName() : "Interview";
+        String candidateName = (candidate.getFirstName() + " " + candidate.getLastName()).trim();
+        String recruiterName = (recruiter.getFirstName() + " " + recruiter.getLastName()).trim();
+
+        InterviewEvent event = new InterviewEvent(
+                UUID.randomUUID(),
+                saved.getId(),
+                interviewTitle,
+                candidateName,
+                candidate.getEmail(),
+                recruiterName,
+                recruiter.getEmail(),
+                joinUrl,
+                Instant.now()
+        );
+
+        eventPublisher.publishEvent(new InterviewScheduledDomainEvent(event));
+
         return interviewMapper.toResponse(saved);
     }
 
@@ -158,14 +196,46 @@ public class InterviewService {
         if (request.durationMinutes() != null) {
             interview.setDurationMinutes(request.durationMinutes());
         }
-        return interviewMapper.toResponse(interview);
+        Interview saved = interviewRepository.save(interview);
+
+        String rawToken = joinTokenService.regenerateJoinToken(saved);
+        String joinUrl = joinBaseUrl + "/" + rawToken;
+
+        InterviewEvent event = buildInterviewEvent(saved, joinUrl);
+        eventPublisher.publishEvent(new InterviewRescheduledDomainEvent(event));
+
+        return interviewMapper.toResponse(saved);
     }
 
     public InterviewResponse cancel(UUID id) {
         Interview interview = findScheduledOrThrow(id);
         interview.setStatus(InterviewStatus.CANCELLED);
         interview.setCancelledAt(Instant.now());
-        return interviewMapper.toResponse(interview);
+        Interview saved = interviewRepository.save(interview);
+
+        joinTokenService.revokeActiveTokens(saved);
+
+        InterviewEvent event = buildInterviewEvent(saved, null);
+        eventPublisher.publishEvent(new InterviewCancelledDomainEvent(event));
+
+        return interviewMapper.toResponse(saved);
+    }
+
+    public String regenerateLink(UUID id) {
+        Interview interview = findScheduledOrThrow(id);
+
+        String rawToken = joinTokenService.regenerateJoinToken(interview);
+        String joinUrl = joinBaseUrl + "/" + rawToken;
+
+        InterviewEvent event = buildInterviewEvent(interview, joinUrl);
+        eventPublisher.publishEvent(new InterviewLinkRegeneratedDomainEvent(event));
+
+        return joinUrl;
+    }
+
+    public void revokeLink(UUID id) {
+        Interview interview = findScheduledOrThrow(id);
+        joinTokenService.revokeActiveTokens(interview);
     }
 
     public InterviewResponse noShow(UUID id) {
@@ -178,6 +248,37 @@ public class InterviewService {
         Interview interview = findScheduledOrThrow(id);
         interview.setStatus(InterviewStatus.COMPLETED);
         return interviewMapper.toResponse(interview);
+    }
+
+    private InterviewEvent buildInterviewEvent(Interview interview, String joinUrl) {
+        Candidate candidate = candidateRepository.findById(interview.getCandidateId()).orElse(null);
+        String candidateName = (candidate != null)
+                ? (candidate.getFirstName() + " " + candidate.getLastName()).trim() : "";
+        String candidateEmail = (candidate != null) ? candidate.getEmail() : "";
+
+        Recruiter recruiter = recruiterRepository.findById(interview.getRecruiterId()).orElse(null);
+        String recruiterName = (recruiter != null)
+                ? (recruiter.getFirstName() + " " + recruiter.getLastName()).trim() : "";
+        String recruiterEmail = (recruiter != null) ? recruiter.getEmail() : "";
+
+        String interviewTitle = "Interview";
+        if (interview.getJobPositionId() != null) {
+            interviewTitle = jobPositionRepository.findById(interview.getJobPositionId())
+                    .map(JobPosition::getName)
+                    .orElse("Interview");
+        }
+
+        return new InterviewEvent(
+                UUID.randomUUID(),
+                interview.getId(),
+                interviewTitle,
+                candidateName,
+                candidateEmail,
+                recruiterName,
+                recruiterEmail,
+                joinUrl,
+                Instant.now()
+        );
     }
 
     private Interview findScheduledOrThrow(UUID id) {

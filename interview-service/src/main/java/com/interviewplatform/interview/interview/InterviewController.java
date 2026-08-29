@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -52,13 +53,25 @@ public class InterviewController {
         return interviewService.cancel(id);
     }
 
+    @PostMapping("/{id}/regenerate-link")
+    public ResponseEntity<Map<String, String>> regenerateLink(@PathVariable UUID id) {
+        String joinUrl = interviewService.regenerateLink(id);
+        return ResponseEntity.ok(Map.of("joinUrl", joinUrl));
+    }
+
+    @PostMapping("/{id}/revoke-link")
+    public ResponseEntity<Void> revokeLink(@PathVariable UUID id) {
+        interviewService.revokeLink(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{id}/no-show")
-    public InterviewResponse noShow(@PathVariable UUID id) {
-        return interviewService.noShow(id);
+    public ResponseEntity<InterviewResponse> noShow(@PathVariable UUID id) {
+        return ResponseEntity.ok(interviewService.noShow(id));
     }
 
     @PostMapping("/{id}/complete")
-    public InterviewResponse complete(@PathVariable UUID id) {
-        return interviewService.complete(id);
+    public ResponseEntity<InterviewResponse> complete(@PathVariable UUID id) {
+        return ResponseEntity.ok(interviewService.complete(id));
     }
 }

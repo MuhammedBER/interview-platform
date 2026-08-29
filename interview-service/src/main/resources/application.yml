@@ -23,4 +23,12 @@ spring:
         jwt:
           issuer-uri: ${APP_KEYCLOAK_ISSUER_URI}
           jwk-set-uri: ${APP_KEYCLOAK_JWK_SET_URI}
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+app:
+  join:
+    base-url: ${APP_JOIN_BASE_URL:http://localhost:3000/join}
 server.port: 8081
