@@ -12,5 +12,6 @@ public record InterviewEvent(
     String recruiterName,
     String recruiterEmail,
     String joinUrl,
+    Instant scheduledStart,
     Instant occurredAt
 ) {}

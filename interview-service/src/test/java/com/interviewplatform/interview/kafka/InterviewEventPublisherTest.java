@@ -43,6 +43,7 @@ class InterviewEventPublisherTest {
     UUID eventId = UUID.fromString("11111111-1111-1111-1111-111111111111");
     UUID interviewId = UUID.fromString("22222222-2222-2222-2222-222222222222");
     Instant occurredAt = Instant.parse("2026-08-29T00:00:00Z");
+    Instant scheduledStart = Instant.parse("2026-08-30T10:00:00Z");
 
     InterviewEvent event = new InterviewEvent(
         eventId,
@@ -53,6 +54,7 @@ class InterviewEventPublisherTest {
         "John Recruiter",
         "john@example.com",
         "http://localhost:3000/join/sample-token",
+        scheduledStart,
         occurredAt
     );
 
@@ -72,7 +74,7 @@ class InterviewEventPublisherTest {
     String jsonOutput = jsonCaptor.getValue();
     JsonNode jsonNode = objectMapper.readTree(jsonOutput);
 
-    // Verify exactly 9 keys
+    // Verify exactly 10 keys
     List<String> fieldNames = new ArrayList<>();
     jsonNode.fieldNames().forEachRemaining(fieldNames::add);
     assertThat(fieldNames).containsExactlyInAnyOrder(
@@ -84,6 +86,7 @@ class InterviewEventPublisherTest {
         "recruiterName",
         "recruiterEmail",
         "joinUrl",
+        "scheduledStart",
         "occurredAt"
     );
 
@@ -96,7 +99,9 @@ class InterviewEventPublisherTest {
     assertThat(jsonNode.get("recruiterEmail").asText()).isEqualTo("john@example.com");
     assertThat(jsonNode.get("joinUrl").asText()).isEqualTo("http://localhost:3000/join/sample-token");
 
-    // Assert occurredAt is an ISO-8601 string, not a timestamp number
+    // Assert scheduledStart and occurredAt are ISO-8601 strings
+    assertThat(jsonNode.get("scheduledStart").isTextual()).isTrue();
+    assertThat(jsonNode.get("scheduledStart").asText()).isEqualTo("2026-08-30T10:00:00Z");
     assertThat(jsonNode.get("occurredAt").isTextual()).isTrue();
     assertThat(jsonNode.get("occurredAt").asText()).isEqualTo("2026-08-29T00:00:00Z");
   }

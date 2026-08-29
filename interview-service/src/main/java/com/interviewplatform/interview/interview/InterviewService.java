@@ -123,6 +123,7 @@ public class InterviewService {
                 recruiterName,
                 recruiter.getEmail(),
                 joinUrl,
+                saved.getScheduledStart(),
                 Instant.now()
         );
 
@@ -284,6 +285,7 @@ public class InterviewService {
                 recruiterName,
                 recruiterEmail,
                 joinUrl,
+                interview.getScheduledStart(),
                 Instant.now()
         );
     }

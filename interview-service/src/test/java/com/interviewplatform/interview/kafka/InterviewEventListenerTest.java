@@ -32,6 +32,7 @@ class InterviewEventListenerTest {
         "John Recruiter",
         "john@example.com",
         "http://localhost:3000/join/sample-raw-token",
+        Instant.now(),
         Instant.now()
     );
   }

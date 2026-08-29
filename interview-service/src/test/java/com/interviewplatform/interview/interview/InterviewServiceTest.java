@@ -131,6 +131,7 @@ class InterviewServiceTest {
     assertThat(event.recruiterName()).isEqualTo("John Recruiter");
     assertThat(event.recruiterEmail()).isEqualTo("recruiter@test.com");
     assertThat(event.joinUrl()).isEqualTo("http://localhost:3000/join/raw-test-token-123");
+    assertThat(event.scheduledStart()).isEqualTo(mockSaved.getScheduledStart());
     assertThat(event.occurredAt()).isNotNull();
   }
 
@@ -159,6 +160,7 @@ class InterviewServiceTest {
     InterviewEvent event = eventCaptor.getValue().event();
     assertThat(event.interviewId()).isEqualTo(interview.getId());
     assertThat(event.joinUrl()).isEqualTo("http://localhost:3000/join/new-raw-rescheduled-token");
+    assertThat(event.scheduledStart()).isEqualTo(interview.getScheduledStart());
   }
 
   @Test
@@ -186,6 +188,7 @@ class InterviewServiceTest {
     InterviewEvent event = eventCaptor.getValue().event();
     assertThat(event.interviewId()).isEqualTo(interview.getId());
     assertThat(event.joinUrl()).isNull();
+    assertThat(event.scheduledStart()).isEqualTo(interview.getScheduledStart());
   }
 
   @Test
@@ -211,6 +214,7 @@ class InterviewServiceTest {
     InterviewEvent event = eventCaptor.getValue().event();
     assertThat(event.interviewId()).isEqualTo(interview.getId());
     assertThat(event.joinUrl()).isEqualTo("http://localhost:3000/join/regen-raw-token-456");
+    assertThat(event.scheduledStart()).isEqualTo(interview.getScheduledStart());
   }
 
   @Test
