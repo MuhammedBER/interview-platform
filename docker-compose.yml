@@ -137,9 +137,19 @@ services:
     container_name: interview-platform-notification-service
     ports:
       - 8082:8082
+    environment:
+      APP_NOTIFICATION_DATASOURCE_URL: ${APP_NOTIFICATION_DATASOURCE_URL}
+      APP_NOTIFICATION_DATASOURCE_USERNAME: ${APP_NOTIFICATION_DATASOURCE_USERNAME}
+      APP_NOTIFICATION_DATASOURCE_PASSWORD: ${APP_NOTIFICATION_DATASOURCE_PASSWORD}
+      APP_MAIL_HOST: ${APP_MAIL_HOST}
+      APP_MAIL_FROM: ${APP_MAIL_FROM}
     depends_on:
+      postgres:
+        condition: service_healthy
       kafka:
         condition: service_healthy
+      mailhog:
+        condition: service_started
     healthcheck:
       test: [ "CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8082 && echo -e 'GET /actuator/health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && cat <&3 | grep -q 'HTTP/1.1 200'" ]
       interval: 10s
