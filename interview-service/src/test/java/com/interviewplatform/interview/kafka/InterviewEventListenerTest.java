@@ -60,4 +60,10 @@ class InterviewEventListenerTest {
     listener.onInterviewLinkRegenerated(new InterviewLinkRegeneratedDomainEvent(sampleEvent));
     verify(interviewEventPublisher).publish(InterviewEventListener.TOPIC_INTERVIEW_LINK_REGENERATED, sampleEvent);
   }
+
+  @Test
+  void onInterviewReminder_publishesEventToReminderTopic() {
+    listener.onInterviewReminder(new InterviewReminderDomainEvent(sampleEvent));
+    verify(interviewEventPublisher).publish(InterviewEventListener.TOPIC_INTERVIEW_REMINDER, sampleEvent);
+  }
 }

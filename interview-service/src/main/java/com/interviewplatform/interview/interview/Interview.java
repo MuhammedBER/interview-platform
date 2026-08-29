@@ -101,6 +101,14 @@ public class Interview {
     this.admitted = admitted;
   }
 
+  public void setReminder24hSentAt(Instant reminder24hSentAt) {
+    this.reminder24hSentAt = reminder24hSentAt;
+  }
+
+  public void setReminder1hSentAt(Instant reminder1hSentAt) {
+    this.reminder1hSentAt = reminder1hSentAt;
+  }
+
   public UUID getId() {
     return id;
   }

@@ -11,6 +11,7 @@ public class InterviewEventListener {
   public static final String TOPIC_INTERVIEW_RESCHEDULED = "interview.rescheduled";
   public static final String TOPIC_INTERVIEW_CANCELLED = "interview.cancelled";
   public static final String TOPIC_INTERVIEW_LINK_REGENERATED = "interview.link-regenerated";
+  public static final String TOPIC_INTERVIEW_REMINDER = "interview.reminder";
 
   private final InterviewEventPublisher interviewEventPublisher;
 
@@ -36,5 +37,10 @@ public class InterviewEventListener {
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
   public void onInterviewLinkRegenerated(InterviewLinkRegeneratedDomainEvent domainEvent) {
     interviewEventPublisher.publish(TOPIC_INTERVIEW_LINK_REGENERATED, domainEvent.event());
+  }
+
+  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+  public void onInterviewReminder(InterviewReminderDomainEvent domainEvent) {
+    interviewEventPublisher.publish(TOPIC_INTERVIEW_REMINDER, domainEvent.event());
   }
 }

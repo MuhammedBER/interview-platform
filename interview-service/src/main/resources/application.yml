@@ -31,4 +31,11 @@ spring:
 app:
   join:
     base-url: ${APP_JOIN_BASE_URL:http://localhost:3000/join}
+  reminder:
+    # Frequency of the reminder scan (shorten for a fast demo).
+    check-interval-ms: ${APP_REMINDER_CHECK_INTERVAL_MS:60000}
+    # Reminder windows: an interview is reminded when its start is within this many
+    # minutes from now and the matching reminder has not been sent yet.
+    window-24h-minutes: ${APP_REMINDER_WINDOW_24H_MINUTES:1440}
+    window-1h-minutes: ${APP_REMINDER_WINDOW_1H_MINUTES:60}
 server.port: 8081
