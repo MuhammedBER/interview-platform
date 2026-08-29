@@ -97,6 +97,10 @@ public class Interview {
     this.cancelledAt = cancelledAt;
   }
 
+  public void setAdmitted(boolean admitted) {
+    this.admitted = admitted;
+  }
+
   public UUID getId() {
     return id;
   }

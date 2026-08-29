@@ -28,6 +28,7 @@ public class SecurityConfig {
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers("/actuator/health").permitAll()
                         .pathMatchers(HttpMethod.GET, "/api/public/join-tokens/*").permitAll()
+                        .pathMatchers(HttpMethod.GET, "/api/public/join-tokens/*/status").permitAll()
                         // CORS preflight requests must not require authentication.
                         .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyExchange().authenticated())

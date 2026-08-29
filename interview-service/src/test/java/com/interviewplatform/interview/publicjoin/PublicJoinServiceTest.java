@@ -171,6 +171,55 @@ class PublicJoinServiceTest {
     assertThat(body.candidateName()).isEqualTo("Alice Candidate");
   }
 
+  @Test
+  void getLobbyStatus_whenRefused_returnsSameRefusalResponse() {
+    String rawToken = "raw-revoked-token";
+    String tokenHash = JoinTokenService.hashToken(rawToken);
+    Interview interview = createSampleInterview();
+    JoinToken token = new JoinToken(interview, tokenHash, TokenStatus.REVOKED, Instant.now().minusSeconds(600), Instant.now().plusSeconds(600));
+
+    when(joinTokenRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(token));
+
+    ResponseEntity<?> response = publicJoinService.getLobbyStatus(rawToken);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
+    assertThat(response.getBody()).isEqualTo(new JoinTokenRefusalResponse("REVOKED"));
+  }
+
+  @Test
+  void getLobbyStatus_whenValidBeforeAdmit_returns200WithAdmittedFalse() {
+    String rawToken = "raw-valid-token";
+    String tokenHash = JoinTokenService.hashToken(rawToken);
+    Instant scheduledStart = Instant.now();
+    Interview interview = new Interview(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), null, scheduledStart, 60, InterviewStatus.SCHEDULED);
+    assertThat(interview.isAdmitted()).isFalse();
+
+    JoinToken token = new JoinToken(interview, tokenHash, TokenStatus.PENDING, scheduledStart.minusSeconds(300), scheduledStart.plusSeconds(300));
+    when(joinTokenRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(token));
+
+    ResponseEntity<?> response = publicJoinService.getLobbyStatus(rawToken);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getBody()).isEqualTo(new JoinLobbyStatusResponse(false, scheduledStart));
+  }
+
+  @Test
+  void getLobbyStatus_whenValidAfterAdmit_returns200WithAdmittedTrue() {
+    String rawToken = "raw-valid-token";
+    String tokenHash = JoinTokenService.hashToken(rawToken);
+    Instant scheduledStart = Instant.now();
+    Interview interview = new Interview(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), null, scheduledStart, 60, InterviewStatus.SCHEDULED);
+    interview.setAdmitted(true);
+
+    JoinToken token = new JoinToken(interview, tokenHash, TokenStatus.PENDING, scheduledStart.minusSeconds(300), scheduledStart.plusSeconds(300));
+    when(joinTokenRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(token));
+
+    ResponseEntity<?> response = publicJoinService.getLobbyStatus(rawToken);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getBody()).isEqualTo(new JoinLobbyStatusResponse(true, scheduledStart));
+  }
+
   private Interview createSampleInterview() {
     return new Interview(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), null, Instant.now(), 60, InterviewStatus.SCHEDULED);
   }

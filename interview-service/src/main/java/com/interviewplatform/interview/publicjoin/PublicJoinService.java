@@ -40,36 +40,12 @@ public class PublicJoinService {
   }
 
   public ResponseEntity<?> validateToken(String rawToken) {
-    String tokenHash = JoinTokenService.hashToken(rawToken);
-    Optional<JoinToken> tokenOptional = joinTokenRepository.findByTokenHash(tokenHash);
-
-    if (tokenOptional.isEmpty()) {
-      return ResponseEntity.status(HttpStatus.NOT_FOUND)
-          .body(new JoinTokenRefusalResponse("NOT_FOUND"));
+    TokenResolution resolution = resolveToken(rawToken);
+    if (resolution.isRefused()) {
+      return resolution.getRefusal();
     }
 
-    JoinToken token = tokenOptional.get();
-    TokenStatus status = token.getStatus();
-
-    if (status == TokenStatus.REVOKED) {
-      return ResponseEntity.status(HttpStatus.GONE)
-          .body(new JoinTokenRefusalResponse("REVOKED"));
-    }
-    if (status == TokenStatus.USED) {
-      return ResponseEntity.status(HttpStatus.GONE)
-          .body(new JoinTokenRefusalResponse("USED"));
-    }
-    if (status == TokenStatus.EXPIRED) {
-      return ResponseEntity.status(HttpStatus.GONE)
-          .body(new JoinTokenRefusalResponse("EXPIRED"));
-    }
-
-    Instant now = Instant.now();
-    if (now.isBefore(token.getValidFrom()) || now.isAfter(token.getValidUntil())) {
-      return ResponseEntity.status(HttpStatus.FORBIDDEN)
-          .body(new JoinTokenRefusalResponse("OUTSIDE_WINDOW"));
-    }
-
+    JoinToken token = resolution.getToken();
     Interview interview = token.getInterview();
 
     String interviewTitle = "Interview";
@@ -96,5 +72,81 @@ public class PublicJoinService {
     );
 
     return ResponseEntity.ok(response);
+  }
+
+  public ResponseEntity<?> getLobbyStatus(String rawToken) {
+    TokenResolution resolution = resolveToken(rawToken);
+    if (resolution.isRefused()) {
+      return resolution.getRefusal();
+    }
+
+    JoinToken token = resolution.getToken();
+    Interview interview = token.getInterview();
+
+    JoinLobbyStatusResponse response = new JoinLobbyStatusResponse(
+        interview.isAdmitted(),
+        interview.getScheduledStart()
+    );
+
+    return ResponseEntity.ok(response);
+  }
+
+  private TokenResolution resolveToken(String rawToken) {
+    String tokenHash = JoinTokenService.hashToken(rawToken);
+    Optional<JoinToken> tokenOptional = joinTokenRepository.findByTokenHash(tokenHash);
+
+    if (tokenOptional.isEmpty()) {
+      return TokenResolution.refusal(HttpStatus.NOT_FOUND, "NOT_FOUND");
+    }
+
+    JoinToken token = tokenOptional.get();
+    TokenStatus status = token.getStatus();
+
+    if (status == TokenStatus.REVOKED) {
+      return TokenResolution.refusal(HttpStatus.GONE, "REVOKED");
+    }
+    if (status == TokenStatus.USED) {
+      return TokenResolution.refusal(HttpStatus.GONE, "USED");
+    }
+    if (status == TokenStatus.EXPIRED) {
+      return TokenResolution.refusal(HttpStatus.GONE, "EXPIRED");
+    }
+
+    Instant now = Instant.now();
+    if (now.isBefore(token.getValidFrom()) || now.isAfter(token.getValidUntil())) {
+      return TokenResolution.refusal(HttpStatus.FORBIDDEN, "OUTSIDE_WINDOW");
+    }
+
+    return TokenResolution.success(token);
+  }
+
+  private static class TokenResolution {
+    private final JoinToken token;
+    private final ResponseEntity<JoinTokenRefusalResponse> refusal;
+
+    private TokenResolution(JoinToken token, ResponseEntity<JoinTokenRefusalResponse> refusal) {
+      this.token = token;
+      this.refusal = refusal;
+    }
+
+    public static TokenResolution success(JoinToken token) {
+      return new TokenResolution(token, null);
+    }
+
+    public static TokenResolution refusal(HttpStatus status, String reason) {
+      return new TokenResolution(null, ResponseEntity.status(status).body(new JoinTokenRefusalResponse(reason)));
+    }
+
+    public boolean isRefused() {
+      return refusal != null;
+    }
+
+    public ResponseEntity<JoinTokenRefusalResponse> getRefusal() {
+      return refusal;
+    }
+
+    public JoinToken getToken() {
+      return token;
+    }
   }
 }

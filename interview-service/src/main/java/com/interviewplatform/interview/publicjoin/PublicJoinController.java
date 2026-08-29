@@ -20,4 +20,9 @@ public class PublicJoinController {
   public ResponseEntity<?> validateToken(@PathVariable String rawToken) {
     return publicJoinService.validateToken(rawToken);
   }
+
+  @GetMapping("/{rawToken}/status")
+  public ResponseEntity<?> getLobbyStatus(@PathVariable String rawToken) {
+    return publicJoinService.getLobbyStatus(rawToken);
+  }
 }

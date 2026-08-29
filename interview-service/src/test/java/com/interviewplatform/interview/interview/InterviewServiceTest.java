@@ -229,4 +229,31 @@ class InterviewServiceTest {
     verify(joinTokenService).revokeActiveTokens(interview);
     verifyNoInteractions(eventPublisher);
   }
+
+  @Test
+  void admit_setsAdmittedToTrueAndIsIdempotentOnSecondCall() {
+    // Arrange
+    UUID interviewId = UUID.randomUUID();
+    when(tenantContext.getOrganizationId()).thenReturn(orgId);
+
+    Interview interview = new Interview(orgId, UUID.randomUUID(), UUID.randomUUID(), null, Instant.now(), 60, InterviewStatus.SCHEDULED);
+    assertThat(interview.isAdmitted()).isFalse();
+
+    when(interviewRepository.findByIdAndOrganizationId(interviewId, orgId)).thenReturn(Optional.of(interview));
+    when(interviewRepository.save(interview)).thenReturn(interview);
+
+    // Act 1
+    interviewService.admit(interviewId);
+
+    // Assert 1
+    assertThat(interview.isAdmitted()).isTrue();
+    verify(interviewRepository).save(interview);
+
+    // Act 2 (Idempotency check)
+    interviewService.admit(interviewId);
+
+    // Assert 2
+    assertThat(interview.isAdmitted()).isTrue();
+    verify(interviewRepository, times(2)).save(interview);
+  }
 }

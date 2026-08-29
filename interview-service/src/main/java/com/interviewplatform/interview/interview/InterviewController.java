@@ -65,6 +65,11 @@ public class InterviewController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{id}/admit")
+    public InterviewResponse admit(@PathVariable UUID id) {
+        return interviewService.admit(id);
+    }
+
     @PostMapping("/{id}/no-show")
     public ResponseEntity<InterviewResponse> noShow(@PathVariable UUID id) {
         return ResponseEntity.ok(interviewService.noShow(id));

@@ -238,6 +238,13 @@ public class InterviewService {
         joinTokenService.revokeActiveTokens(interview);
     }
 
+    public InterviewResponse admit(UUID id) {
+        Interview interview = findScheduledOrThrow(id);
+        interview.setAdmitted(true);
+        Interview saved = interviewRepository.save(interview);
+        return interviewMapper.toResponse(saved);
+    }
+
     public InterviewResponse noShow(UUID id) {
         Interview interview = findScheduledOrThrow(id);
         interview.setStatus(InterviewStatus.NO_SHOW);
