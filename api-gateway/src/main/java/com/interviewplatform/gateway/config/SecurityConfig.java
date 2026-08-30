@@ -29,6 +29,7 @@ public class SecurityConfig {
                         .pathMatchers("/actuator/health").permitAll()
                         .pathMatchers(HttpMethod.GET, "/api/public/join-tokens/*").permitAll()
                         .pathMatchers(HttpMethod.GET, "/api/public/join-tokens/*/status").permitAll()
+                        .pathMatchers(HttpMethod.POST, "/api/public/video-token").permitAll()
                         // CORS preflight requests must not require authentication.
                         .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyExchange().authenticated())

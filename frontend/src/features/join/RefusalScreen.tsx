@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-export type RefusalVariant = 'expired' | 'revoked' | 'used' | 'not_found';
+export type RefusalVariant = 'expired' | 'revoked' | 'used' | 'not_found' | 'outside_window';
 
 export interface RefusalScreenProps {
   variant: RefusalVariant;
@@ -24,6 +24,10 @@ const REFUSAL_COPY: Record<RefusalVariant, RefusalCopy> = {
   used: {
     heading: 'This link has already been used.',
     body: 'This interview has already been joined from this link.',
+  },
+  outside_window: {
+    heading: "This link isn't active right now.",
+    body: 'Joining only works for a short time around the interview’s scheduled start. If this seems wrong, contact the recruiter.',
   },
   not_found: {
     heading: "We couldn't find this interview.",

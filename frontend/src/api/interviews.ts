@@ -28,10 +28,26 @@ export function cancelInterview(id: string): Promise<Interview> {
   return api.post<Interview>(`/api/interviews/${id}/cancel`);
 }
 
+export function admitInterview(id: string): Promise<Interview> {
+  return api.post<Interview>(`/api/interviews/${id}/admit`);
+}
+
 export function markNoShow(id: string): Promise<Interview> {
   return api.post<Interview>(`/api/interviews/${id}/no-show`);
 }
 
 export function completeInterview(id: string): Promise<Interview> {
   return api.post<Interview>(`/api/interviews/${id}/complete`);
+}
+
+export interface RegenerateLinkResponse {
+  joinUrl: string;
+}
+
+export function regenerateLink(id: string): Promise<RegenerateLinkResponse> {
+  return api.post<RegenerateLinkResponse>(`/api/interviews/${id}/regenerate-link`);
+}
+
+export function revokeLink(id: string): Promise<void> {
+  return api.post<void>(`/api/interviews/${id}/revoke-link`);
 }

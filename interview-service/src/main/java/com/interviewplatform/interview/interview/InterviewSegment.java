@@ -81,7 +81,15 @@ public class InterviewSegment {
     return actualStart;
   }
 
+  public void setActualStart(Instant actualStart) {
+    this.actualStart = actualStart;
+  }
+
   public Instant getActualEnd() {
     return actualEnd;
+  }
+
+  public void setActualEnd(Instant actualEnd) {
+    this.actualEnd = actualEnd;
   }
 }

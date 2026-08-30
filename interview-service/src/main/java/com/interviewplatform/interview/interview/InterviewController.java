@@ -79,4 +79,21 @@ public class InterviewController {
     public ResponseEntity<InterviewResponse> complete(@PathVariable UUID id) {
         return ResponseEntity.ok(interviewService.complete(id));
     }
+
+    @PostMapping("/{id}/start")
+    public InterviewResponse start(@PathVariable UUID id) {
+        return interviewService.start(id);
+    }
+
+    @PostMapping("/{id}/segments/{segmentId}/start")
+    public InterviewSegmentResponse startSegment(@PathVariable UUID id,
+                                                 @PathVariable UUID segmentId) {
+        return interviewService.startSegment(id, segmentId);
+    }
+
+    @PostMapping("/{id}/segments/{segmentId}/end")
+    public InterviewSegmentResponse endSegment(@PathVariable UUID id,
+                                               @PathVariable UUID segmentId) {
+        return interviewService.endSegment(id, segmentId);
+    }
 }

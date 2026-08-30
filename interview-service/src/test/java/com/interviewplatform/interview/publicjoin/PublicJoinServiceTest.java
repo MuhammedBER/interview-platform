@@ -200,7 +200,7 @@ class PublicJoinServiceTest {
     ResponseEntity<?> response = publicJoinService.getLobbyStatus(rawToken);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-    assertThat(response.getBody()).isEqualTo(new JoinLobbyStatusResponse(false, scheduledStart));
+    assertThat(response.getBody()).isEqualTo(new JoinLobbyStatusResponse(false, scheduledStart, interview.getStatus()));
   }
 
   @Test
@@ -217,7 +217,7 @@ class PublicJoinServiceTest {
     ResponseEntity<?> response = publicJoinService.getLobbyStatus(rawToken);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-    assertThat(response.getBody()).isEqualTo(new JoinLobbyStatusResponse(true, scheduledStart));
+    assertThat(response.getBody()).isEqualTo(new JoinLobbyStatusResponse(true, scheduledStart, interview.getStatus()));
   }
 
   private Interview createSampleInterview() {

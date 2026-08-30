@@ -13,13 +13,12 @@ let initPromise: Promise<void> | null = null;
 export function initKeycloak(): Promise<void> {
   if (!initPromise) {
     initPromise = (async () => {
-      // onLoad 'login-required' instead of 'check-sso': this cockpit has no
-      // public content — every screen requires an authenticated recruiter —
-      // so an unauthenticated visitor must be redirected straight to the
-      // Keycloak login page rather than rendering an anonymous shell that
-      // would only fail with 401s on its first API call.
+      // onLoad 'check-sso' instead of 'login-required': the app has public
+      // content now — an unauthenticated candidate route (/join/:token) must
+      // render without being redirected to the recruiter login page — so the
+      // init call silently detects an existing session instead of forcing one.
       await keycloak.init({
-        onLoad: 'login-required',
+        onLoad: 'check-sso',
         pkceMethod: 'S256',
         checkLoginIframe: false,
       });

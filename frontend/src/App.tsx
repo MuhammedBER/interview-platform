@@ -7,6 +7,7 @@ import PositionsListPage from './features/positions/PositionsListPage';
 import InterviewDetailPage from './features/interviews/InterviewDetailPage';
 import InterviewListPage from './features/interviews/InterviewListPage';
 import ScheduleInterviewPage from './features/interviews/ScheduleInterviewPage';
+import JoinPage from './features/join/JoinPage';
 
 const router = createBrowserRouter([
   {
@@ -46,6 +47,10 @@ const router = createBrowserRouter([
         element: <PositionEditorPage />,
       },
     ],
+  },
+  {
+    path: '/join/:token',
+    element: <JoinPage />,
   },
 ]);
 

@@ -21,13 +21,16 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.lang.reflect.Field;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -259,5 +262,181 @@ class InterviewServiceTest {
     // Assert 2
     assertThat(interview.isAdmitted()).isTrue();
     verify(interviewRepository, times(2)).save(interview);
+  }
+
+  @Test
+  void start_movesScheduledToInProgress() {
+    UUID interviewId = UUID.randomUUID();
+    when(tenantContext.getOrganizationId()).thenReturn(orgId);
+
+    Interview interview = new Interview(orgId, UUID.randomUUID(), UUID.randomUUID(), null, Instant.now(), 60, InterviewStatus.SCHEDULED);
+    when(interviewRepository.findByIdAndOrganizationId(interviewId, orgId)).thenReturn(Optional.of(interview));
+    when(interviewRepository.save(interview)).thenReturn(interview);
+
+    interviewService.start(interviewId);
+
+    assertThat(interview.getStatus()).isEqualTo(InterviewStatus.IN_PROGRESS);
+    verify(interviewRepository).save(interview);
+  }
+
+  @Test
+  void start_whenAlreadyInProgressIsIdempotentNoOp() {
+    UUID interviewId = UUID.randomUUID();
+    when(tenantContext.getOrganizationId()).thenReturn(orgId);
+
+    Interview interview = new Interview(orgId, UUID.randomUUID(), UUID.randomUUID(), null, Instant.now(), 60, InterviewStatus.IN_PROGRESS);
+    when(interviewRepository.findByIdAndOrganizationId(interviewId, orgId)).thenReturn(Optional.of(interview));
+
+    interviewService.start(interviewId);
+
+    assertThat(interview.getStatus()).isEqualTo(InterviewStatus.IN_PROGRESS);
+    verify(interviewRepository, never()).save(any());
+  }
+
+  @Test
+  void start_whenCompletedThrowsConflict() {
+    UUID interviewId = UUID.randomUUID();
+    when(tenantContext.getOrganizationId()).thenReturn(orgId);
+
+    Interview interview = new Interview(orgId, UUID.randomUUID(), UUID.randomUUID(), null, Instant.now(), 60, InterviewStatus.COMPLETED);
+    when(interviewRepository.findByIdAndOrganizationId(interviewId, orgId)).thenReturn(Optional.of(interview));
+
+    assertThatThrownBy(() -> interviewService.start(interviewId))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("cannot be started");
+
+    verify(interviewRepository, never()).save(any());
+  }
+
+  @Test
+  void complete_movesInProgressToCompleted() {
+    UUID interviewId = UUID.randomUUID();
+    when(tenantContext.getOrganizationId()).thenReturn(orgId);
+
+    Interview interview = new Interview(orgId, UUID.randomUUID(), UUID.randomUUID(), null, Instant.now(), 60, InterviewStatus.IN_PROGRESS);
+    when(interviewRepository.findByIdAndOrganizationId(interviewId, orgId)).thenReturn(Optional.of(interview));
+    when(interviewRepository.save(interview)).thenReturn(interview);
+
+    interviewService.complete(interviewId);
+
+    assertThat(interview.getStatus()).isEqualTo(InterviewStatus.COMPLETED);
+    verify(interviewRepository).save(interview);
+  }
+
+  @Test
+  void complete_whenAlreadyCompletedIsIdempotentNoOp() {
+    UUID interviewId = UUID.randomUUID();
+    when(tenantContext.getOrganizationId()).thenReturn(orgId);
+
+    Interview interview = new Interview(orgId, UUID.randomUUID(), UUID.randomUUID(), null, Instant.now(), 60, InterviewStatus.COMPLETED);
+    when(interviewRepository.findByIdAndOrganizationId(interviewId, orgId)).thenReturn(Optional.of(interview));
+
+    interviewService.complete(interviewId);
+
+    assertThat(interview.getStatus()).isEqualTo(InterviewStatus.COMPLETED);
+    verify(interviewRepository, never()).save(any());
+  }
+
+  @Test
+  void complete_whenScheduledThrowsConflict() {
+    UUID interviewId = UUID.randomUUID();
+    when(tenantContext.getOrganizationId()).thenReturn(orgId);
+
+    Interview interview = new Interview(orgId, UUID.randomUUID(), UUID.randomUUID(), null, Instant.now(), 60, InterviewStatus.SCHEDULED);
+    when(interviewRepository.findByIdAndOrganizationId(interviewId, orgId)).thenReturn(Optional.of(interview));
+
+    assertThatThrownBy(() -> interviewService.complete(interviewId))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("cannot be completed");
+
+    verify(interviewRepository, never()).save(any());
+  }
+
+  @Test
+  void startSegment_recordsActualStartOnlyWhileInProgress() throws Exception {
+    UUID interviewId = UUID.randomUUID();
+    UUID segmentId = UUID.randomUUID();
+    when(tenantContext.getOrganizationId()).thenReturn(orgId);
+
+    Interview interview = new Interview(orgId, UUID.randomUUID(), UUID.randomUUID(), null, Instant.now(), 60, InterviewStatus.IN_PROGRESS);
+    InterviewSegment segment = new InterviewSegment("Intro", 0, 15, List.of("Q1"));
+    setSegmentId(segment, segmentId);
+    interview.addSegment(segment);
+
+    when(interviewRepository.findByIdAndOrganizationId(interviewId, orgId)).thenReturn(Optional.of(interview));
+    when(interviewRepository.save(interview)).thenReturn(interview);
+
+    Instant before = Instant.now();
+    interviewService.startSegment(interviewId, segmentId);
+    Instant after = Instant.now();
+
+    assertThat(segment.getActualStart()).isBetween(before, after);
+    assertThat(segment.getActualEnd()).isNull();
+    verify(interviewRepository).save(interview);
+  }
+
+  @Test
+  void endSegment_recordsActualEndOnlyWhileInProgress() throws Exception {
+    UUID interviewId = UUID.randomUUID();
+    UUID segmentId = UUID.randomUUID();
+    when(tenantContext.getOrganizationId()).thenReturn(orgId);
+
+    Interview interview = new Interview(orgId, UUID.randomUUID(), UUID.randomUUID(), null, Instant.now(), 60, InterviewStatus.IN_PROGRESS);
+    InterviewSegment segment = new InterviewSegment("Intro", 0, 15, List.of("Q1"));
+    setSegmentId(segment, segmentId);
+    interview.addSegment(segment);
+
+    when(interviewRepository.findByIdAndOrganizationId(interviewId, orgId)).thenReturn(Optional.of(interview));
+    when(interviewRepository.save(interview)).thenReturn(interview);
+
+    Instant before = Instant.now();
+    interviewService.endSegment(interviewId, segmentId);
+    Instant after = Instant.now();
+
+    assertThat(segment.getActualEnd()).isBetween(before, after);
+    assertThat(segment.getActualStart()).isNull();
+    verify(interviewRepository).save(interview);
+  }
+
+  @Test
+  void startSegment_whenInterviewNotInProgressThrowsConflict() throws Exception {
+    UUID interviewId = UUID.randomUUID();
+    UUID segmentId = UUID.randomUUID();
+    when(tenantContext.getOrganizationId()).thenReturn(orgId);
+
+    Interview interview = new Interview(orgId, UUID.randomUUID(), UUID.randomUUID(), null, Instant.now(), 60, InterviewStatus.SCHEDULED);
+    InterviewSegment segment = new InterviewSegment("Intro", 0, 15, List.of("Q1"));
+    setSegmentId(segment, segmentId);
+    interview.addSegment(segment);
+
+    when(interviewRepository.findByIdAndOrganizationId(interviewId, orgId)).thenReturn(Optional.of(interview));
+
+    assertThatThrownBy(() -> interviewService.startSegment(interviewId, segmentId))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("IN_PROGRESS");
+
+    verify(interviewRepository, never()).save(any());
+  }
+
+  @Test
+  void startSegment_whenSegmentNotInInterviewThrowsNotFound() throws Exception {
+    UUID interviewId = UUID.randomUUID();
+    UUID segmentId = UUID.randomUUID();
+    when(tenantContext.getOrganizationId()).thenReturn(orgId);
+
+    Interview interview = new Interview(orgId, UUID.randomUUID(), UUID.randomUUID(), null, Instant.now(), 60, InterviewStatus.IN_PROGRESS);
+    when(interviewRepository.findByIdAndOrganizationId(interviewId, orgId)).thenReturn(Optional.of(interview));
+
+    assertThatThrownBy(() -> interviewService.startSegment(interviewId, segmentId))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("Segment not found");
+
+    verify(interviewRepository, never()).save(any());
+  }
+
+  private void setSegmentId(InterviewSegment segment, UUID id) throws Exception {
+    Field idField = InterviewSegment.class.getDeclaredField("id");
+    idField.setAccessible(true);
+    idField.set(segment, id);
   }
 }

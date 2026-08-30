@@ -252,10 +252,79 @@ public class InterviewService {
         return interviewMapper.toResponse(interview);
     }
 
+    public InterviewResponse start(UUID id) {
+        UUID organizationId = tenantContext.getOrganizationId();
+        Interview interview = interviewRepository.findByIdAndOrganizationId(id, organizationId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Interview not found"));
+
+        InterviewStatus status = interview.getStatus();
+        if (status == InterviewStatus.IN_PROGRESS) {
+            return interviewMapper.toResponse(interview);
+        }
+        if (status == InterviewStatus.SCHEDULED) {
+            interview.setStatus(InterviewStatus.IN_PROGRESS);
+            Interview saved = interviewRepository.save(interview);
+            return interviewMapper.toResponse(saved);
+        }
+        throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Interview cannot be started; current status is " + status);
+    }
+
     public InterviewResponse complete(UUID id) {
-        Interview interview = findScheduledOrThrow(id);
-        interview.setStatus(InterviewStatus.COMPLETED);
-        return interviewMapper.toResponse(interview);
+        UUID organizationId = tenantContext.getOrganizationId();
+        Interview interview = interviewRepository.findByIdAndOrganizationId(id, organizationId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Interview not found"));
+
+        InterviewStatus status = interview.getStatus();
+        if (status == InterviewStatus.COMPLETED) {
+            return interviewMapper.toResponse(interview);
+        }
+        if (status == InterviewStatus.IN_PROGRESS) {
+            interview.setStatus(InterviewStatus.COMPLETED);
+            Interview saved = interviewRepository.save(interview);
+            return interviewMapper.toResponse(saved);
+        }
+        throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Interview cannot be completed; current status is " + status);
+    }
+
+    public InterviewSegmentResponse startSegment(UUID interviewId, UUID segmentId) {
+        Interview interview = findInProgressOrThrow(interviewId);
+        InterviewSegment segment = findSegmentOrThrow(interview, segmentId);
+        segment.setActualStart(Instant.now());
+        interviewRepository.save(interview);
+        return interviewMapper.toResponse(segment);
+    }
+
+    public InterviewSegmentResponse endSegment(UUID interviewId, UUID segmentId) {
+        Interview interview = findInProgressOrThrow(interviewId);
+        InterviewSegment segment = findSegmentOrThrow(interview, segmentId);
+        segment.setActualEnd(Instant.now());
+        interviewRepository.save(interview);
+        return interviewMapper.toResponse(segment);
+    }
+
+    private Interview findInProgressOrThrow(UUID interviewId) {
+        UUID organizationId = tenantContext.getOrganizationId();
+        Interview interview = interviewRepository.findByIdAndOrganizationId(interviewId, organizationId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Interview not found"));
+        if (interview.getStatus() != InterviewStatus.IN_PROGRESS) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Segment timing is only allowed while the interview is IN_PROGRESS; current status is "
+                            + interview.getStatus());
+        }
+        return interview;
+    }
+
+    private InterviewSegment findSegmentOrThrow(Interview interview, UUID segmentId) {
+        return interview.getSegments().stream()
+                .filter(segment -> segment.getId().equals(segmentId))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Segment not found in this interview"));
     }
 
     private InterviewEvent buildInterviewEvent(Interview interview, String joinUrl) {

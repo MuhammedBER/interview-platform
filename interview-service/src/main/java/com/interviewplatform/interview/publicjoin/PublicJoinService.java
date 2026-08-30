@@ -3,6 +3,7 @@ package com.interviewplatform.interview.publicjoin;
 import com.interviewplatform.interview.candidate.Candidate;
 import com.interviewplatform.interview.candidate.CandidateRepository;
 import com.interviewplatform.interview.interview.Interview;
+import com.interviewplatform.interview.interview.InterviewStatus;
 import com.interviewplatform.interview.jointoken.JoinToken;
 import com.interviewplatform.interview.jointoken.JoinTokenRepository;
 import com.interviewplatform.interview.jointoken.JoinTokenService;
@@ -85,7 +86,8 @@ public class PublicJoinService {
 
     JoinLobbyStatusResponse response = new JoinLobbyStatusResponse(
         interview.isAdmitted(),
-        interview.getScheduledStart()
+        interview.getScheduledStart(),
+        interview.getStatus()
     );
 
     return ResponseEntity.ok(response);

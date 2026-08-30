@@ -38,4 +38,7 @@ app:
     # minutes from now and the matching reminder has not been sent yet.
     window-24h-minutes: ${APP_REMINDER_WINDOW_24H_MINUTES:1440}
     window-1h-minutes: ${APP_REMINDER_WINDOW_1H_MINUTES:60}
+  zego:
+    app-id: ${ZEGO_APP_ID:}
+    server-secret: ${ZEGO_SERVER_SECRET:}
 server.port: 8081

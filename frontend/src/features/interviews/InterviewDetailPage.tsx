@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError } from '../../lib/api';
 import {
+  admitInterview,
   cancelInterview,
   completeInterview,
   getInterview,
@@ -13,6 +14,7 @@ import StatusBadge from '../../components/StatusBadge';
 import ErrorBanner from '../../components/ErrorBanner';
 import FieldErrors from '../../components/FieldErrors';
 import { formatDateTime, fromLocalDatetimeValue, toLocalDatetimeValue } from '../../lib/format';
+import JoinLinkPanel from './JoinLinkPanel';
 
 const inputClass =
   'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500';
@@ -65,7 +67,7 @@ export default function InterviewDetailPage() {
     return <div className="h-64 animate-pulse rounded border border-gray-200 bg-white" aria-hidden="true" />;
   }
 
-  if (!interview) {
+  if (!interview || !id) {
     return (
       <div className="space-y-6">
         <Link to="/interviews" className="text-sm text-gray-500 hover:text-gray-800">
@@ -80,13 +82,18 @@ export default function InterviewDetailPage() {
   const disabledTooltip = isScheduled
     ? undefined
     : `Only available while the interview is SCHEDULED (current: ${interview.status}).`;
+  const admitDisabledReason = interview.admitted
+    ? 'Already admitted'
+    : isScheduled
+      ? undefined
+      : `Only available while the interview is SCHEDULED (current: ${interview.status}).`;
 
-  async function runAction(action: 'cancel' | 'no-show' | 'complete') {
+  async function runAction(action: 'cancel' | 'no-show' | 'complete' | 'admit') {
     if (!id) return;
     setBusy(action);
     setBanner(null);
     try {
-      const fn = action === 'cancel' ? cancelInterview : action === 'no-show' ? markNoShow : completeInterview;
+      const fn = action === 'cancel' ? cancelInterview : action === 'no-show' ? markNoShow : action === 'admit' ? admitInterview : completeInterview;
       await fn(id);
       setShowReschedule(false);
       await load();
@@ -174,6 +181,15 @@ export default function InterviewDetailPage() {
           </dl>
 
           <div className="flex flex-col items-start gap-2">
+            <button
+              type="button"
+              disabled={!isScheduled || interview.admitted || busy !== null}
+              title={admitDisabledReason}
+              onClick={() => void runAction('admit')}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy === 'admit' ? 'Admitting…' : 'Admit'}
+            </button>
             <button
               type="button"
               disabled={!isScheduled || busy !== null}
@@ -264,6 +280,8 @@ export default function InterviewDetailPage() {
           </div>
         </div>
       ) : null}
+
+      <JoinLinkPanel interviewId={id} status={interview.status} onChanged={load} />
 
       <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold text-gray-700">
