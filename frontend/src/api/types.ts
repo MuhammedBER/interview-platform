@@ -73,13 +73,16 @@ export interface Interview {
 
 export interface InterviewListItem {
   id: string;
+  title: string | null;
   candidateName: string | null;
   candidateEmail: string | null;
+  positionId: string | null;
   positionName: string | null;
   scheduledStart: string;
   durationMinutes: number;
   segmentCount: number;
   status: InterviewStatus;
+  admitted: boolean;
 }
 
 export interface CandidateInput {

@@ -42,7 +42,12 @@ public class InterviewMapper {
                 interview.getStatus(),
                 interview.isAdmitted(),
                 interview.getCancelledAt(),
-                segments);
+                interview.getCandidateWaitingSince(),
+                segments,
+                null,
+                null,
+                null,
+                null);
     }
 
     public InterviewSegmentResponse toResponse(InterviewSegment segment) {

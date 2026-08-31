@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError } from '../../lib/api';
 import {
@@ -14,7 +14,11 @@ import StatusBadge from '../../components/StatusBadge';
 import ErrorBanner from '../../components/ErrorBanner';
 import FieldErrors from '../../components/FieldErrors';
 import { formatDateTime, fromLocalDatetimeValue, toLocalDatetimeValue } from '../../lib/format';
+import { getWaitingStatus } from '../room/api';
+import type { WaitingStatus } from '../room/types';
 import JoinLinkPanel from './JoinLinkPanel';
+
+const WAITING_POLL_INTERVAL_MS = 5000;
 
 const inputClass =
   'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500';
@@ -37,6 +41,11 @@ export default function InterviewDetailPage() {
   const [rescheduleLocal, setRescheduleLocal] = useState('');
   const [rescheduleDuration, setRescheduleDuration] = useState<number | ''>('');
   const [rescheduleFieldErrors, setRescheduleFieldErrors] = useState<string[]>([]);
+  const [waitingStatus, setWaitingStatus] = useState<WaitingStatus | null>(null);
+  const [waitingError, setWaitingError] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [waitingRetryNonce, setWaitingRetryNonce] = useState(0);
+  const waitingLoadedRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -54,6 +63,76 @@ export default function InterviewDetailPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Poll the candidate's waiting status while the interview is in a state where
+  // the candidate can join and has not yet been admitted. Polling stops once
+  // the server reports `admitted === true`, and is cleared on unmount / when
+  // the interview leaves the joinable state.
+  const statusQualified =
+    interview !== null &&
+    !interview.admitted &&
+    (interview.status === 'SCHEDULED' || interview.status === 'IN_PROGRESS');
+
+  useEffect(() => {
+    waitingLoadedRef.current = false;
+    setWaitingError(false);
+    setSessionExpired(false);
+    if (!id || !statusQualified) {
+      setWaitingStatus(null);
+      return;
+    }
+    const interviewId: string = id;
+
+    let cancelled = false;
+    let inFlight = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    async function pollOnce() {
+      if (inFlight || cancelled) return;
+      inFlight = true;
+      let admitted = false;
+      try {
+        const status = await getWaitingStatus(interviewId);
+        if (cancelled) return;
+        setWaitingStatus(status);
+        waitingLoadedRef.current = true;
+        setWaitingError(false);
+        admitted = status.admitted;
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.status === 401) {
+          // Session expired: surface it, stop polling, never retry.
+          setSessionExpired(true);
+          if (timer !== null) {
+            clearTimeout(timer);
+            timer = null;
+          }
+          return;
+        }
+        // Non-401 polling failure must not blank the page. Only surface a
+        // retryable error when no waiting status has been obtained yet.
+        if (!waitingLoadedRef.current) {
+          setWaitingError(true);
+        }
+      } finally {
+        inFlight = false;
+      }
+      if (cancelled || admitted) return;
+      timer = setTimeout(() => {
+        void pollOnce();
+      }, WAITING_POLL_INTERVAL_MS);
+    }
+
+    void pollOnce();
+
+    return () => {
+      cancelled = true;
+      if (timer !== null) {
+        clearTimeout(timer);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, statusQualified, waitingRetryNonce]);
 
   useEffect(() => {
     if (interview && !banner) {
@@ -140,6 +219,45 @@ export default function InterviewDetailPage() {
         </Link>
         <h1 className="text-2xl font-semibold text-gray-900">Interview details</h1>
       </div>
+
+      {interview.status === 'SCHEDULED' || interview.status === 'IN_PROGRESS' ? (
+        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-3">
+              {sessionExpired ? (
+                <p className="text-sm text-red-700">
+                  Your session has expired. Please sign in again to continue.
+                </p>
+              ) : waitingError ? (
+                <div className="flex items-center gap-3">
+                  <p className="text-sm text-red-700">
+                    Could not check the candidate's waiting status.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setWaitingRetryNonce((n) => n + 1)}
+                    className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : waitingStatus !== null &&
+                waitingStatus.waiting &&
+                !waitingStatus.admitted ? (
+                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                  Candidate is waiting
+                </span>
+              ) : null}
+            </div>
+            <Link
+              to={`/room/${interview.id}`}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+            >
+              Join Interview Room
+            </Link>
+          </div>
+        </div>
+      ) : null}
 
       {banner !== null ? <ErrorBanner onRetry={() => void load()} retrying={loading}>{banner}</ErrorBanner> : null}
 

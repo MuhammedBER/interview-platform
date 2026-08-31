@@ -1,5 +1,7 @@
 package com.interviewplatform.interview.interview;
 
+import com.interviewplatform.interview.room.RoomService;
+import com.interviewplatform.interview.room.RoomWaitingStatusResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,9 +22,11 @@ import java.util.UUID;
 public class InterviewController {
 
     private final InterviewService interviewService;
+    private final RoomService roomService;
 
-    public InterviewController(InterviewService interviewService) {
+    public InterviewController(InterviewService interviewService, RoomService roomService) {
         this.interviewService = interviewService;
+        this.roomService = roomService;
     }
 
     @PostMapping
@@ -33,13 +37,20 @@ public class InterviewController {
     }
 
     @GetMapping
-    public List<InterviewListItemResponse> list(@RequestParam(name = "status", required = false) InterviewStatus status) {
-        return interviewService.list(status);
+    public List<InterviewListItemResponse> list(
+            @RequestParam(name = "status", required = false) InterviewStatus status,
+            @RequestParam(name = "positionId", required = false) UUID positionId) {
+        return interviewService.list(status, positionId);
     }
 
     @GetMapping("/{id}")
     public InterviewResponse get(@PathVariable UUID id) {
         return interviewService.get(id);
+    }
+
+    @GetMapping("/{id}/waiting-status")
+    public RoomWaitingStatusResponse getWaitingStatus(@PathVariable UUID id) {
+        return roomService.getWaitingStatus(id);
     }
 
     @PostMapping("/{id}/reschedule")

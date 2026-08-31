@@ -3,6 +3,7 @@ package com.interviewplatform.interview.publicjoin;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -24,5 +25,10 @@ public class PublicJoinController {
   @GetMapping("/{rawToken}/status")
   public ResponseEntity<?> getLobbyStatus(@PathVariable String rawToken) {
     return publicJoinService.getLobbyStatus(rawToken);
+  }
+
+  @PostMapping("/{rawToken}/waiting")
+  public ResponseEntity<?> markCandidateWaiting(@PathVariable String rawToken) {
+    return publicJoinService.markCandidateWaiting(rawToken);
   }
 }

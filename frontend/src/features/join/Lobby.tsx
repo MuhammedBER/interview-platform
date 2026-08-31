@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { API_BASE } from '../../lib/api';
 import { formatDateTime } from '../../lib/format';
 import RefusalScreen, { type RefusalVariant } from './RefusalScreen';
@@ -20,7 +21,12 @@ interface LobbyProps {
 
 type LobbyStatus = 'waiting' | 'admitted' | 'failure' | 'network-retry';
 
-const POLL_INTERVAL_MS = 5000;
+const POLL_INTERVAL_MS = 4000;
+
+/** The FE4-09 candidate room route, reached once the recruiter admits the candidate. */
+function roomPath(token: string): string {
+  return `/join/${token}/room`;
+}
 
 function isLobbyStatusResponse(value: unknown): value is JoinLobbyStatusResponse {
   if (typeof value !== 'object' || value === null) return false;
@@ -43,11 +49,29 @@ export default function Lobby({
   scheduledStart,
   durationMinutes,
 }: LobbyProps) {
+  const navigate = useNavigate();
   const [status, setStatus] = useState<LobbyStatus>('waiting');
   const [variant, setVariant] = useState<RefusalVariant>('not_found');
   const activeRef = useRef(true);
   const failureCountRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const waitingPosted = useRef(false);
+
+  /**
+   * Tell the backend the candidate is present. Public endpoint, no bearer token.
+   * Called once on mount; retried only when polling detects the session dropped.
+   */
+  async function announcePresent() {
+    if (waitingPosted.current) return;
+    waitingPosted.current = true;
+    try {
+      await fetch(`${API_BASE}/api/public/join-tokens/${token}/waiting`, {
+        method: 'POST',
+      });
+    } catch {
+      // Ignored; a retry may happen if polling later detects a dropped session.
+    }
+  }
 
   function scheduleNextPoll() {
     timerRef.current = setTimeout(() => {
@@ -93,6 +117,7 @@ export default function Lobby({
 
       if (body.admitted) {
         setStatus('admitted');
+        navigate(roomPath(token), { replace: true });
         return;
       }
 
@@ -102,6 +127,8 @@ export default function Lobby({
       failureCountRef.current += 1;
       if (failureCountRef.current >= 3) {
         setStatus('network-retry');
+        waitingPosted.current = false;
+        void announcePresent();
       } else {
         scheduleNextPoll();
       }
@@ -110,14 +137,18 @@ export default function Lobby({
 
   function handleRetry() {
     failureCountRef.current = 0;
+    waitingPosted.current = false;
     setStatus('waiting');
+    void announcePresent();
     void poll();
   }
 
   useEffect(() => {
     activeRef.current = true;
     failureCountRef.current = 0;
+    waitingPosted.current = false;
 
+    void announcePresent();
     void poll();
 
     return () => {
@@ -177,7 +208,7 @@ export default function Lobby({
                     strokeLinecap="round"
                   />
                 </svg>
-                <span>Waiting for the recruiter to admit you…</span>
+                <span>Waiting for the interviewer to admit you…</span>
               </div>
               <p className="mt-3 text-xs text-gray-500">
                 Make sure your camera and microphone are ready — you won't need to do anything

@@ -20,6 +20,7 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/public/join-tokens/*").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/public/join-tokens/*/status").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/public/join-tokens/*/waiting").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/public/video-token").permitAll()
                 .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))

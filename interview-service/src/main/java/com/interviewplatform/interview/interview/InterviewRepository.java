@@ -18,6 +18,12 @@ public interface InterviewRepository extends JpaRepository<Interview, UUID> {
 
     @Query("select distinct i from Interview i " +
             "left join fetch i.segments " +
+            "where i.organizationId = :organizationId and i.jobPositionId = :jobPositionId")
+    List<Interview> findAllByOrganizationIdAndJobPositionId(@Param("organizationId") UUID organizationId,
+                                                            @Param("jobPositionId") UUID jobPositionId);
+
+    @Query("select distinct i from Interview i " +
+            "left join fetch i.segments " +
             "where i.id = :id and i.organizationId = :organizationId")
     Optional<Interview> findByIdAndOrganizationId(@Param("id") UUID id,
                                                   @Param("organizationId") UUID organizationId);

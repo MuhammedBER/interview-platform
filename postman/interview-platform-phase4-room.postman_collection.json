@@ -1,0 +1,848 @@
+{
+  "info": {
+    "_postman_id": "c9f2b1e6-4a8d-4f7b-9e3a-2c5d8f1a6b04",
+    "name": "Interview Platform — Phase 4 (Room Bootstrap) + Notes + Video-token security",
+    "description": "Phase 4 collection. Security story first: an UNADMITTED candidate's video token is refused (403), then an admitted candidate is minted 200. Recruiter1 then drives a position-based fixture (templates applied at schedule), starts the interview and a segment, creates and lists notes (BE4-05), and reads the room (BE4-06) asserting the four parts. Finally recruiter2 (cross-org) gets 404 on notes GET/POST and room.\n\nSet recruiterAPassword and recruiterBPassword in Collection -> Variables (passwords equal usernames: recruiter1 / recruiter2).\n\nData is unique per run: a runId derived from the wall clock is injected into candidate emails/names so re-running never collides with prior rows.\n\nFolder order is mandatory and intentional: 1) tokens, 2) SECURITY FIRST (unadmitted refused, admitted minted), 3) fixtures with position + templates + start, 4) notes, 5) room, 6) cross-org 404s.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "10998314",
+    "_collection_link": "https://go.postman.co/collection/10998314-c9f2b1e6-4a8d-4f7b-9e3a-2c5d8f1a6b04?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "1 — Auth (Keycloak, two tenants)",
+      "item": [
+        {
+          "name": "POST token — recruiter A (org A)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "pm.test('access_token is present', function () {",
+                  "    pm.expect(json.access_token, 'no access_token in response').to.be.a('string').and.to.have.length.above(0);",
+                  "});",
+                  "pm.collectionVariables.set('accessToken', json.access_token);",
+                  "",
+                  "function decodeJwtPayload(token) {",
+                  "    var seg = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "    while (seg.length % 4) { seg += '='; }",
+                  "    var txt = CryptoJS.enc.Utf8.stringify(CryptoJS.enc.Base64.parse(seg));",
+                  "    return JSON.parse(txt);",
+                  "}",
+                  "var payload = decodeJwtPayload(json.access_token);",
+                  "pm.test('organization_id equals org A UUID', function () {",
+                  "    pm.expect(payload.organization_id).to.eql(pm.collectionVariables.get('orgAId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "grant_type", "value": "password", "type": "text" },
+                { "key": "client_id", "value": "{{clientId}}", "type": "text" },
+                { "key": "username", "value": "{{recruiterAUsername}}", "type": "text" },
+                { "key": "password", "value": "{{recruiterAPassword}}", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/token",
+              "host": ["{{keycloakUrl}}"],
+              "path": ["realms", "{{realm}}", "protocol", "openid-connect", "token"]
+            },
+            "description": "Password grant on the public client interview-web. Stores {{accessToken}} (recruiter1, org A)."
+          },
+          "response": []
+        },
+        {
+          "name": "POST token — recruiter B (org B)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test('access_token is present', function () {",
+                  "    pm.expect(json.access_token, 'no access_token in response').to.be.a('string').and.to.have.length.above(0);",
+                  "});",
+                  "pm.collectionVariables.set('accessTokenB', json.access_token);",
+                  "",
+                  "function decodeJwtPayload(token) {",
+                  "    var seg = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "    while (seg.length % 4) { seg += '='; }",
+                  "    var txt = CryptoJS.enc.Utf8.stringify(CryptoJS.enc.Base64.parse(seg));",
+                  "    return JSON.parse(txt);",
+                  "}",
+                  "var payload = decodeJwtPayload(json.access_token);",
+                  "pm.test('organization_id equals org B UUID', function () {",
+                  "    pm.expect(payload.organization_id).to.eql(pm.collectionVariables.get('orgBId'));",
+                  "});",
+                  "pm.test('org A and org B differ', function () {",
+                  "    pm.expect(pm.collectionVariables.get('orgAId')).to.not.eql(pm.collectionVariables.get('orgBId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "grant_type", "value": "password", "type": "text" },
+                { "key": "client_id", "value": "{{clientId}}", "type": "text" },
+                { "key": "username", "value": "{{recruiterBUsername}}", "type": "text" },
+                { "key": "password", "value": "{{recruiterBPassword}}", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/token",
+              "host": ["{{keycloakUrl}}"],
+              "path": ["realms", "{{realm}}", "protocol", "openid-connect", "token"]
+            },
+            "description": "Stores {{accessTokenB}} (recruiter2, org B) for the cross-org 404 section."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2 — SECURITY FIRST: video token refusal then mint",
+      "item": [
+        {
+          "name": "POST /api/interviews — schedule security interview (recruiter A)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Unique-per-run data + a near-term start so the join token stays valid",
+                  "// for the public video-token requests below.",
+                  "var runId = Math.floor(Date.now() / 1000);",
+                  "pm.collectionVariables.set('runId', String(runId));",
+                  "pm.collectionVariables.set('scheduledStart', new Date(Date.now() + 5 * 60 * 1000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test('body.id is a UUID', function () {",
+                  "    pm.expect(json.id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);",
+                  "});",
+                  "pm.collectionVariables.set('securityInterviewId', json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"candidate\": {\n    \"firstName\": \"Sec\",\n    \"lastName\": \"Cand{{runId}}\",\n    \"email\": \"sec-cand{{runId}}@example.com\",\n    \"phone\": \"\"\n  },\n  \"scheduledStart\": \"{{scheduledStart}}\",\n  \"durationMinutes\": 60,\n  \"segments\": [\n    {\n      \"title\": \"Intro\",\n      \"orderIndex\": 0,\n      \"plannedMinutes\": 15,\n      \"preparedQuestions\": []\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews",
+              "host": ["{{gatewayUrl}}"],
+              "path": ["api", "interviews"]
+            },
+            "description": "Recruiter A schedules a dedicated interview for the security checks. UNIQUE email per run. `preparedQuestions` is a JSON ARRAY (never a bare string). Captures {{securityInterviewId}}."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/interviews/{{securityInterviewId}}/regenerate-link",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "var token = json.joinUrl.split('/join/')[1];",
+                  "pm.test('join token captured', function () {",
+                  "    pm.expect(token).to.be.a('string').and.to.have.length.above(40);",
+                  "});",
+                  "pm.collectionVariables.set('securityRawToken', token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "" },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{securityInterviewId}}/regenerate-link",
+              "host": ["{{gatewayUrl}}"],
+              "path": ["api", "interviews", "{{securityInterviewId}}", "regenerate-link"]
+            },
+            "description": "Exposes the candidate join token for the security interview."
+          },
+          "response": []
+        },
+        {
+          "name": "REFUSAL — POST /api/public/video-token for UNADMITTED candidate (expect 403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403 (unadmitted refused)', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"joinToken\": \"{{securityRawToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/public/video-token",
+              "host": ["{{gatewayUrl}}"],
+              "path": ["api", "public", "video-token"]
+            },
+            "description": "SECURITY FIRST: a candidate who has NOT been admitted must NOT receive a video token. The join token is valid, but the interview is not admitted, so the service refuses with 403."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/interviews/{{securityInterviewId}}/admit (recruiter A)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test('body.admitted equals true', function () {",
+                  "    pm.expect(json.admitted).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "" },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{securityInterviewId}}/admit",
+              "host": ["{{gatewayUrl}}"],
+              "path": ["api", "interviews", "{{securityInterviewId}}", "admit"]
+            },
+            "description": "Recruiter admits the candidate so the mint path below can succeed."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/public/video-token for ADMITTED candidate (expect 200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 (admitted minted)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test('body.appId is a number', function () {",
+                  "    pm.expect(json.appId).to.be.a('number');",
+                  "});",
+                  "pm.test('body.token is non-empty', function () {",
+                  "    pm.expect(json.token).to.be.a('string').and.to.have.length.above(0);",
+                  "});",
+                  "pm.test('body.roomId equals securityInterviewId', function () {",
+                  "    pm.expect(json.roomId).to.eql(pm.collectionVariables.get('securityInterviewId'));",
+                  "});",
+                  "pm.test('body.userId is present', function () {",
+                  "    pm.expect(json.userId).to.be.a('string').and.to.have.length.above(0);",
+                  "});",
+                  "pm.test('NO server secret is leaked in the response', function () {",
+                  "    pm.expect(Object.prototype.hasOwnProperty.call(json, 'serverSecret')).to.eql(false);",
+                  "    pm.expect(Object.prototype.hasOwnProperty.call(json, 'secret')).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"joinToken\": \"{{securityRawToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/public/video-token",
+              "host": ["{{gatewayUrl}}"],
+              "path": ["api", "public", "video-token"]
+            },
+            "description": "Now that the candidate is admitted the same public call mints a token (200). Also asserts the response never carries the server secret."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3 — Fixtures (position + templates, start interview & segment)",
+      "item": [
+        {
+          "name": "POST /api/positions — position with template segments (recruiter A)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('positionId', json.id);",
+                  "pm.test('body.templates.length equals 3', function () {",
+                  "    pm.expect(json.templates).to.have.lengthOf(3);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Phase4 Room {{runId}}\",\n  \"description\": \"Phase 4 fixture position\",\n  \"status\": \"ACTIVE\",\n  \"templates\": [\n    {\n      \"title\": \"Intro\",\n      \"orderIndex\": 0,\n      \"plannedMinutes\": 15,\n      \"defaultQuestions\": [\"Tell me about yourself\", \"Why this role?\"]\n    },\n    {\n      \"title\": \"Technical\",\n      \"orderIndex\": 1,\n      \"plannedMinutes\": 25,\n      \"defaultQuestions\": [\"Explain a past project\", \"How do you handle conflict?\"]\n    },\n    {\n      \"title\": \"Wrap-up\",\n      \"orderIndex\": 2,\n      \"plannedMinutes\": 10,\n      \"defaultQuestions\": [\"Any questions for us?\"]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/positions",
+              "host": ["{{gatewayUrl}}"],
+              "path": ["api", "positions"]
+            },
+            "description": "Recruiter A creates a position whose three template segments carry `defaultQuestions` as JSON ARRAYS. This position's segments will be applied to the interview below."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/interviews — schedule against position (segments applied from templates)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('interviewId', json.id);",
+                  "pm.test('templates were applied: 3 segments on the schedule response', function () {",
+                  "    pm.expect(json.segments).to.have.lengthOf(3);",
+                  "});",
+                  "pm.test('first segment title is the first template', function () {",
+                  "    pm.expect(json.segments[0].title).to.eql('Intro');",
+                  "});",
+                  "pm.collectionVariables.set('firstSegmentId', json.segments[0].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"candidate\": {\n    \"firstName\": \"Room\",\n    \"lastName\": \"Cand{{runId}}\",\n    \"email\": \"room-cand{{runId}}@example.com\",\n    \"phone\": \"\"\n  },\n  \"jobPositionId\": \"{{positionId}}\",\n  \"scheduledStart\": \"{{scheduledStart}}\",\n  \"durationMinutes\": 60\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews",
+              "host": ["{{gatewayUrl}}"],
+              "path": ["api", "interviews"]
+            },
+            "description": "Recruiter A schedules the main interview WITH jobPositionId and NO inline segments, so the position's template segments are applied at schedule time (InterviewService.schedule copies them). Unique email per run."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/interviews/{{interviewId}}/start",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test('body.status equals IN_PROGRESS', function () {",
+                  "    pm.expect(json.status).to.eql('IN_PROGRESS');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "" },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{interviewId}}/start",
+              "host": ["{{gatewayUrl}}"],
+              "path": ["api", "interviews", "{{interviewId}}", "start"]
+            },
+            "description": "Starts the interview (SCHEDULED -> IN_PROGRESS)."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/interviews/{{interviewId}}/segments/{{firstSegmentId}}/start",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test('body.actualStart is set', function () {",
+                  "    pm.expect(json.actualStart).to.be.a('string');",
+                  "});",
+                  "pm.test('body.actualEnd is null (still running)', function () {",
+                  "    pm.expect(json.actualEnd).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "" },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{interviewId}}/segments/{{firstSegmentId}}/start",
+              "host": ["{{gatewayUrl}}"],
+              "path": ["api", "interviews", "{{interviewId}}", "segments", "{{firstSegmentId}}", "start"]
+            },
+            "description": "Starts the first segment (orderIndex 0): sets its actualStart, keeps actualEnd null. This makes it the CURRENT segment for the room response."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4 — Notes (BE4-05)",
+      "item": [
+        {
+          "name": "POST /api/interviews/{{interviewId}}/notes — tied to the started segment (expect 201, elapsedSeconds > 0)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Guarantee now - segment.actualStart > 0 so elapsedSeconds is strictly positive.",
+                  "var end = Date.now() + 1600;",
+                  "while (Date.now() < end) {}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('noteId', json.id);",
+                  "pm.test('body.segmentId equals the started segment', function () {",
+                  "    pm.expect(json.segmentId).to.eql(pm.collectionVariables.get('firstSegmentId'));",
+                  "});",
+                  "pm.test('body.elapsedSeconds is a number > 0 (ties to a started segment)', function () {",
+                  "    pm.expect(json.elapsedSeconds).to.be.a('number');",
+                  "    pm.expect(json.elapsedSeconds).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Strong communication in the intro; revisit depth of answers.\",\n  \"segmentId\": \"{{firstSegmentId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{interviewId}}/notes",
+              "host": ["{{gatewayUrl}}"],
+              "path": ["api", "interviews", "{{interviewId}}", "notes"]
+            },
+            "description": "Creates a note pinned to the started segment. elapsedSeconds is computed server-side from the segment's actualStart and must be > 0 (the prerequest adds a ~1.6s pause to rule out a flaky 0)."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/interviews/{{interviewId}}/notes — interview-level (segmentId null, expect 201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test('body.segmentId is null', function () {",
+                  "    pm.expect(json.segmentId).to.eql(null);",
+                  "});",
+                  "pm.test('body.elapsedSeconds is a number >= 0', function () {",
+                  "    pm.expect(json.elapsedSeconds).to.be.a('number');",
+                  "    pm.expect(json.elapsedSeconds).to.be.at.least(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Overall impression and next-step recommendation.\",\n  \"segmentId\": null\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{interviewId}}/notes",
+              "host": ["{{gatewayUrl}}"],
+              "path": ["api", "interviews", "{{interviewId}}", "notes"]
+            },
+            "description": "Creates an interview-level (non-segment) note."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/interviews/{{interviewId}}/notes (ascending)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test('body is an array with at least 2 notes', function () {",
+                  "    pm.expect(json).to.be.an('array');",
+                  "    pm.expect(json.length).to.be.at.least(2);",
+                  "});",
+                  "pm.test('notes are ordered by createdAt ascending', function () {",
+                  "    var created = json.map(function (n) { return n.createdAt; });",
+                  "    for (var i = 1; i < created.length; i++) {",
+                  "        pm.expect(new Date(created[i]).getTime()).to.be.at.least(new Date(created[i - 1]).getTime());",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{interviewId}}/notes",
+              "host": ["{{gatewayUrl}}"],
+              "path": ["api", "interviews", "{{interviewId}}", "notes"]
+            },
+            "description": "Lists the interview's notes ordered by createdAt ascending."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5 — Room (BE4-06)",
+      "item": [
+        {
+          "name": "GET /api/interviews/{{interviewId}}/room",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test('body.interview.id equals interviewId', function () {",
+                  "    pm.expect(json.interview.id).to.eql(pm.collectionVariables.get('interviewId'));",
+                  "});",
+                  "pm.test('segments are ascending by orderIndex', function () {",
+                  "    var idx = json.segments.map(function (s) { return s.orderIndex; });",
+                  "    for (var i = 1; i < idx.length; i++) {",
+                  "        pm.expect(idx[i]).to.be.at.least(idx[i - 1]);",
+                  "    }",
+                  "});",
+                  "pm.test('every segment has preparedQuestions as an array', function () {",
+                  "    json.segments.forEach(function (s) {",
+                  "        pm.expect(s.preparedQuestions).to.be.an('array');",
+                  "    });",
+                  "});",
+                  "pm.test('currentSegment is the started-not-ended segment', function () {",
+                  "    pm.expect(json.currentSegment).to.not.eql(null);",
+                  "    pm.expect(json.currentSegment.id).to.eql(pm.collectionVariables.get('firstSegmentId'));",
+                  "    pm.expect(json.currentSegment.actualStart).to.be.a('string');",
+                  "    pm.expect(json.currentSegment.actualEnd).to.eql(null);",
+                  "});",
+                  "pm.test('notes are present and ascending by createdAt', function () {",
+                  "    pm.expect(json.notes).to.be.an('array');",
+                  "    pm.expect(json.notes.length).to.be.at.least(2);",
+                  "    var created = json.notes.map(function (n) { return n.createdAt; });",
+                  "    for (var i = 1; i < created.length; i++) {",
+                  "        pm.expect(new Date(created[i]).getTime()).to.be.at.least(new Date(created[i - 1]).getTime());",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{interviewId}}/room",
+              "host": ["{{gatewayUrl}}"],
+              "path": ["api", "interviews", "{{interviewId}}", "room"]
+            },
+            "description": "Recruiter A reads the room: interview summary, segments (asc), the single started-not-ended currentSegment, and notes (asc)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6 — Cross-org 404s (recruiter B on recruiter A's interview)",
+      "item": [
+        {
+          "name": "REFUSAL — GET /api/interviews/{{interviewId}}/notes (recruiter B, 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessTokenB}}" }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{interviewId}}/notes",
+              "host": ["{{gatewayUrl}}"],
+              "path": ["api", "interviews", "{{interviewId}}", "notes"]
+            },
+            "description": "Recruiter B (org B) tries to read org A notes: the interview resolves to nothing in org B -> 404."
+          },
+          "response": []
+        },
+        {
+          "name": "REFUSAL — POST /api/interviews/{{interviewId}}/notes (recruiter B, 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessTokenB}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"cross-org note should be rejected\",\n  \"segmentId\": null\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{interviewId}}/notes",
+              "host": ["{{gatewayUrl}}"],
+              "path": ["api", "interviews", "{{interviewId}}", "notes"]
+            },
+            "description": "Recruiter B tries to write a note on an org A interview -> 404."
+          },
+          "response": []
+        },
+        {
+          "name": "REFUSAL — GET /api/interviews/{{interviewId}}/room (recruiter B, 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessTokenB}}" }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/interviews/{{interviewId}}/room",
+              "host": ["{{gatewayUrl}}"],
+              "path": ["api", "interviews", "{{interviewId}}", "room"]
+            },
+            "description": "Recruiter B tries to read the org A room -> 404."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": { "type": "text/javascript", "packages": {}, "requests": {}, "exec": [""] }
+    },
+    {
+      "listen": "test",
+      "script": { "type": "text/javascript", "packages": {}, "requests": {}, "exec": [""] }
+    }
+  ],
+  "variable": [
+    { "key": "gatewayUrl", "value": "http://localhost:8080" },
+    { "key": "keycloakUrl", "value": "http://localhost:8180" },
+    { "key": "realm", "value": "interview-platform" },
+    { "key": "clientId", "value": "interview-web" },
+    { "key": "recruiterAUsername", "value": "recruiter1" },
+    { "key": "recruiterAPassword", "value": "recruiter1" },
+    { "key": "recruiterBUsername", "value": "recruiter2" },
+    { "key": "recruiterBPassword", "value": "recruiter2" },
+    { "key": "orgAId", "value": "11111111-1111-1111-1111-111111111111" },
+    { "key": "orgBId", "value": "22222222-2222-2222-2222-222222222222" },
+    { "key": "accessToken", "value": "" },
+    { "key": "accessTokenB", "value": "" },
+    { "key": "runId", "value": "" },
+    { "key": "scheduledStart", "value": "" },
+    { "key": "securityInterviewId", "value": "" },
+    { "key": "securityRawToken", "value": "" },
+    { "key": "positionId", "value": "" },
+    { "key": "interviewId", "value": "" },
+    { "key": "firstSegmentId", "value": "" },
+    { "key": "noteId", "value": "" }
+  ]
+}

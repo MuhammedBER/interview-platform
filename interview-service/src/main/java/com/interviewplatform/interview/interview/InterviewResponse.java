@@ -14,5 +14,10 @@ public record InterviewResponse(
         InterviewStatus status,
         boolean admitted,
         Instant cancelledAt,
-        List<InterviewSegmentResponse> segments
+        Instant candidateWaitingSince,
+        List<InterviewSegmentResponse> segments,
+        String candidateName,
+        String candidateEmail,
+        String positionName,
+        String title
 ) {}

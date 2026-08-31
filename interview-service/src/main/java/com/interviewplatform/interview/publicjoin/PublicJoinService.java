@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -91,6 +92,49 @@ public class PublicJoinService {
     );
 
     return ResponseEntity.ok(response);
+  }
+
+  /**
+   * Candidate signals that they are present and waiting. Records the moment they
+   * started waiting. Refusal status codes mirror the video-token endpoint so the
+   * public candidate flow can treat terminal token states uniformly:
+   * 401 = invalid/revoked/used/expired/outside-window token (terminal),
+   * 409 = interview CANCELLED/COMPLETED (terminal).
+   */
+  @Transactional
+  public ResponseEntity<?> markCandidateWaiting(String rawToken) {
+    String tokenHash = JoinTokenService.hashToken(rawToken);
+    JoinToken token = joinTokenRepository.findByTokenHash(tokenHash)
+        .orElseThrow(() -> new ResponseStatusException(
+            HttpStatus.UNAUTHORIZED, "Invalid join token"));
+
+    TokenStatus status = token.getStatus();
+    if (status == TokenStatus.REVOKED
+        || status == TokenStatus.USED
+        || status == TokenStatus.EXPIRED) {
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+          "Join token is " + status.name());
+    }
+
+    Instant now = Instant.now();
+    if (now.isBefore(token.getValidFrom()) || now.isAfter(token.getValidUntil())) {
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+          "Join token is outside its validity window");
+    }
+
+    Interview interview = token.getInterview();
+    InterviewStatus interviewStatus = interview.getStatus();
+    if (interviewStatus == InterviewStatus.CANCELLED
+        || interviewStatus == InterviewStatus.COMPLETED) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT,
+          "Candidate cannot wait for an interview that is " + interviewStatus);
+    }
+
+    if (interview.getCandidateWaitingSince() == null) {
+      interview.setCandidateWaitingSince(Instant.now());
+    }
+
+    return ResponseEntity.ok().build();
   }
 
   private TokenResolution resolveToken(String rawToken) {

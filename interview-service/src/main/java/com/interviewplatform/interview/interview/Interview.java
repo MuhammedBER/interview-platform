@@ -42,6 +42,9 @@ public class Interview {
   @Column(name = "cancelled_at")
   private Instant cancelledAt;
 
+  @Column(name = "candidate_waiting_since")
+  private Instant candidateWaitingSince;
+
   @Column(name = "reminder24h_sent_at")
   private Instant reminder24hSentAt;
 
@@ -101,6 +104,10 @@ public class Interview {
     this.admitted = admitted;
   }
 
+  public void setCandidateWaitingSince(Instant candidateWaitingSince) {
+    this.candidateWaitingSince = candidateWaitingSince;
+  }
+
   public void setReminder24hSentAt(Instant reminder24hSentAt) {
     this.reminder24hSentAt = reminder24hSentAt;
   }
@@ -123,6 +130,10 @@ public class Interview {
 
   public Instant getCancelledAt() {
     return cancelledAt;
+  }
+
+  public Instant getCandidateWaitingSince() {
+    return candidateWaitingSince;
   }
 
   public boolean isAdmitted() {

@@ -7,8 +7,11 @@ import type {
   ScheduleInterviewInput,
 } from './types';
 
-export function listInterviews(status?: InterviewStatus): Promise<InterviewListItem[]> {
-  const query = status ? `?status=${status}` : '';
+export function listInterviews(status?: InterviewStatus, positionId?: string): Promise<InterviewListItem[]> {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (positionId) params.set('positionId', positionId);
+  const query = params.toString() ? `?${params.toString()}` : '';
   return api.get<InterviewListItem[]>(`/api/interviews${query}`);
 }
 

@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -139,7 +140,7 @@ public class InterviewService {
     }
 
     @Transactional(readOnly = true)
-    public List<InterviewListItemResponse> list(InterviewStatus statusOrNull) {
+    public List<InterviewListItemResponse> list(InterviewStatus statusOrNull, UUID positionIdOrNull) {
         UUID organizationId = tenantContext.getOrganizationId();
 
         Map<UUID, Candidate> candidatesById = candidateRepository
@@ -149,8 +150,15 @@ public class InterviewService {
                 .findAllByOrganizationId(organizationId).stream()
                 .collect(Collectors.toMap(JobPosition::getId, Function.identity()));
 
-        return interviewRepository.findAllByOrganizationId(organizationId).stream()
+        List<Interview> interviews = (positionIdOrNull == null)
+                ? interviewRepository.findAllByOrganizationId(organizationId)
+                : interviewRepository.findAllByOrganizationIdAndJobPositionId(
+                        organizationId, positionIdOrNull);
+
+        // The dashboard lists most recent interviews first.
+        return interviews.stream()
                 .filter(interview -> statusOrNull == null || interview.getStatus() == statusOrNull)
+                .sorted(Comparator.comparing(Interview::getScheduledStart).reversed())
                 .map(interview -> toListItem(interview, candidatesById, positionsById))
                 .toList();
     }
@@ -170,16 +178,20 @@ public class InterviewService {
                 positionName = position.getName();
             }
         }
+        String title = (positionName != null) ? positionName : "Interview";
 
         return new InterviewListItemResponse(
                 interview.getId(),
+                title,
                 candidateName,
                 candidateEmail,
+                interview.getJobPositionId(),
                 positionName,
                 interview.getScheduledStart(),
                 interview.getDurationMinutes(),
                 interview.getSegments().size(),
-                interview.getStatus());
+                interview.getStatus(),
+                interview.isAdmitted());
     }
 
     @Transactional(readOnly = true)
